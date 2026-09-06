@@ -45,11 +45,10 @@ pnpm dev
 pnpm build
 ```
 
-`app/page.tsx` renders shared `game-view.js` markup and mounts `game.js`. `engine.js` owns scheduling, scoring, timing, and progress validation. `styles.css` is shared by both editions. No external runtime assets are needed by the game. The original social image is preserved. The old `sounds.js` is retained for provenance but the upgraded game uses synthesized tones; it is not loaded or packaged.
+`app/page.tsx` renders shared `game-view.js` markup and mounts `game.js`. `engine.js` owns scheduling, scoring, timing, and progress validation. `styles.css` is shared by both editions. No external runtime assets are needed by the game. The original social image is preserved. The upgraded game uses synthesized tones, so the old sound bundle is not included in this repository.
 
 ## Learning rationale and release boundary
 
 The [IES mathematics intervention practice guide](https://ies.ed.gov/ncee/wwc/PracticeGuide/26) recommends systematic instruction and timed activities as one component of fluency practice. The combination of worked corrections and optional speed practice is informed by those broad recommendations; the guide does not validate this game's scheduler, three-second threshold, or effectiveness.
 
 This is a functional local product candidate. A paid release still needs trials with learners and educators, browser/device and assistive-technology QA, and a distribution/support plan. It does not include payments, subscriptions, cloud profiles, or claims of proven learning gains. Progress is one learner per browser profile, and clearing browser data removes it. CSV exports are reports, not restorable backups. Reloading ends an active mission; recorded answers and XP are retained.
-

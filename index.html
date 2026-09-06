@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#593ad5" />
+    <meta
+      name="description"
+      content="Build multiplication confidence with short, adaptive missions and a personal fact collection."
+    />
+    <meta property="og:title" content="Fact Pop! — Multiplication Practice Game" />
+    <meta
+      property="og:description"
+      content="Make multiplication facts stick with multiple-choice and fill-in rounds."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://nickilis613.github.io/fact-pop-game/" />
+    <meta
+      property="og:image"
+      content="https://nickilis613.github.io/fact-pop-game/public/og.png"
+    />
+    <title>Fact Pop! — A little practice. A big pop.</title>
+    <link rel="icon" href="./public/favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="fact-pop"></div>
+    <noscript>Enable JavaScript to play Fact Pop.</noscript>
+    <script type="module">
+      import { view } from "./game-view.js";
+      import { mountGame } from "./game.js";
+      const root = document.getElementById("fact-pop");
+      root.innerHTML = view;
+      mountGame(root);
+    </script>
+  </body>
+</html>

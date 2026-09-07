@@ -7,6 +7,7 @@ export const FACTS = TABLES.flatMap((a) =>
 );
 export const freshProgress = () => ({
   version: 2,
+  student: "",
   xp: 0,
   missions: 0,
   nextMission: 0,
@@ -28,6 +29,9 @@ export function parseProgress(raw) {
   )
     throw Error("Unrecognized saved progress");
   const result = freshProgress();
+  if (p.student !== undefined && (typeof p.student !== "string" || p.student.length > 100))
+    throw Error("Invalid student name");
+  result.student = p.student || "";
   result.xp = p.xp;
   result.missions = p.missions;
   result.nextMission = p.nextMission;

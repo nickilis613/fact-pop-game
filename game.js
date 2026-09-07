@@ -1,3 +1,5 @@
+import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js";
+import { exportProgressCSV, importProgressCSV } from "./progress-csv.js";
 import {
   FACTS,
   TABLES,
@@ -37,7 +39,7 @@ export function mountGame(root) {
   function save() {
     if (stale) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      roster = storeProfile(localStorage, roster, data, roster.active);
     } catch {
       warning(
         "Your browser is not saving progress. You can still play, but this session’s progress may disappear when you leave.",
@@ -126,6 +128,9 @@ export function mountGame(root) {
     if (page === "facts") renderFacts();
   }
   function setup() {
+    renderStudents();
+    $("student-name").value = data.student;
+    $("active-student").textContent = `Current student: ${data.student || "Unnamed student"}`;
     root.querySelectorAll("[data-mode]").forEach((b) => {
       const selected = b.dataset.mode === data.settings.mode;
       b.classList.toggle("selected", selected);
@@ -468,29 +473,111 @@ export function mountGame(root) {
     updateStats();
     $("reset").focus();
   });
-  on($("export"), "click", () => {
-    const csv = [
-      "fact,answer,status,attempts,correct,typed_attempts,typed_correct",
-      ...FACTS.map((f) => {
-        const r = data.facts[f.key];
-        return `${f.a} x ${f.b},${f.answer},${status(r)},${r?.attempts || 0},${r?.correct || 0},${r?.typed || 0},${r?.typedCorrect || 0}`;
-      }),
-    ].join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" })),
-      a = document.createElement("a");
+  let pendingProgress = null;
+  function transferStatus(message) { $("transfer-status").textContent = message; }
+  function downloadProgress() {
+    const url = URL.createObjectURL(new Blob([exportProgressCSV(data)], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
     a.href = url;
-    a.download = "fact-pop-progress.csv";
+    const name = (data.student || "student").replace(/[^a-z0-9_-]/gi, "-").slice(0, 60);
+    a.download = "fact-pop-" + name + "-" + new Date().toISOString().replace(/[:.]/g, "-") + ".csv";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  on($("student-name"), "input", () => {
+    if (stale) return;
+    data.student = $("student-name").value;
+    $("active-student").textContent = "Current student: " + (data.student || "Unnamed student");
+    save();
+    renderStudents();
   });
+  on($("export"), "click", downloadProgress);
+  function previewImport(progress) {
+    pendingProgress = progress;
+    $("import-summary").textContent = "Switch to " + (progress.student || "a new unnamed student") + "? " + progress.xp + " XP · " + progress.missions + " missions · " + Object.keys(progress.facts).length + " facts practiced.";
+    $("import-target").value = "new";
+    $("import-confirm").hidden = false;
+    $("import-backup").focus();
+  }
+  function renderStudents() {
+    $("student-picker").replaceChildren(...roster.profiles.map(p => {
+      const option = document.createElement("option");
+      option.value = p.id;
+      option.textContent = p.progress.student || "Unnamed student";
+      option.selected = p.id === roster.active;
+      return option;
+    }));
+  }
+  function switchStudent(id, incoming) {
+    if (stale) return false;
+    try { roster = storeProfile(localStorage, roster, data, id, incoming); }
+    catch { warning("Could not save student profiles. Nothing was switched. Download the current CSV and free browser storage before trying again."); return false; }
+    stopClock();
+    data = roster.profiles.find(p => p.id === roster.active).progress;
+    mission = null;
+    pendingProgress = null;
+    $("import-confirm").hidden = true;
+    $("reset-confirm").hidden = true;
+    showScreen("ready");
+    $("setup").hidden = false;
+    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("arena-status").textContent = "Made for your growing brain";
+    $("fact-detail").textContent = "Choose a fact below.";
+    setup(); updateStats();
+    return true;
+  }
+  on($("student-picker"), "change", () => {
+    switchStudent($("student-picker").value);
+    renderStudents();
+  });
+  on($("add-student-form"), "submit", e => {
+    e.preventDefault();
+    try {
+      const progress = newStudent($("new-student-name").value);
+      if (switchStudent(crypto.randomUUID(), progress)) {
+        $("new-student-name").value = "";
+        $("profile-status").textContent = "Added " + progress.student + ". Ready to play!";
+      }
+    } catch (error) { $("profile-status").textContent = error.message; }
+  });
+  on($("new-student"), "click", () => { $("new-student-name").focus(); });
+  on($("import-file"), "change", async () => {
+    const file = $("import-file").files[0];
+    $("import-file").value = "";
+    pendingProgress = null;
+    $("import-confirm").hidden = true;
+    if (!file || stale) return;
+    try {
+      if (file.size > 1_000_000) throw Error("Choose a CSV smaller than 1 MB.");
+      const progress = importProgressCSV(await file.text());
+      if (stale) return;
+      transferStatus("");
+      previewImport(progress);
+    } catch (error) { transferStatus("Nothing changed. " + error.message); }
+  });
+  on($("import-cancel"), "click", () => {
+    pendingProgress = null;
+    $("import-confirm").hidden = true;
+    $("import-file").focus();
+  });
+  function applyImport(backup) {
+    if (!pendingProgress || stale) return;
+    if (backup) downloadProgress();
+    const target = $("import-target").value === "new" ? crypto.randomUUID() : roster.active;
+    if (!switchStudent(target, pendingProgress)) return;
+    transferStatus("Ready for " + (data.student || "a new student") + ". Progress saved in this browser.");
+    $("student-name").focus();
+  }
+  on($("import-backup"), "click", () => applyImport(true));
+  on($("import-yes"), "click", () => applyImport(false));
   on(window, "storage", (e) => {
-    if (e.key === STORAGE_KEY || e.key === null) {
+    if (e.key === PROFILES_KEY || e.key === STORAGE_KEY || e.key === null) {
       stale = true;
       warning(
         "Progress changed in another tab. Reload this page before playing again to keep your latest progress.",
       );
       pause();
-      for (const id of ["start", "replay", "resume", "end", "reset-yes"]) $(id).disabled = true;
+      for (const id of ["start", "replay", "resume", "end", "reset-yes", "import-file", "import-yes", "import-backup", "new-student", "student-name", "export", "student-picker", "add-student", "new-student-name"]) $(id).disabled = true;
     }
   });
   setup();

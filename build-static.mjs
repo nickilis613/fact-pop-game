@@ -7,6 +7,8 @@ for (const file of [
   "game-view.js",
   "game.js",
   "engine.js",
+  "progress-csv.js",
+  "profiles.js",
   "styles.css",
   "public/favicon.svg",
   "public/og.png",

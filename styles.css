@@ -1396,3 +1396,16 @@ footer {
     scroll-behavior: auto !important;
   }
 }
+
+#student-name { display: block; width: min(100%, 320px); padding: 10px 12px; margin: 8px 0 16px; border: 1px solid #c5cdc6; border-radius: 10px; font: inherit; }
+#import-file { max-width: 100%; font: inherit; }
+.data-actions label { font-weight: 600; }
+#transfer-status { overflow-wrap: anywhere; }
+
+.student-panel { display: flex; flex-wrap: wrap; align-items: start; gap: 18px 32px; background: #fff; border: 1px solid #dce5df; border-radius: 18px; padding: 20px; margin-bottom: 24px; }
+.student-panel label { display: block; font-weight: 700; margin-bottom: 8px; }
+.student-panel select, .student-panel input, #import-target { font: inherit; padding: 10px 12px; border: 1px solid #bbcabe; border-radius: 10px; max-width: 100%; background: white; color: #203c30; }
+.student-panel select { min-width: 200px; }
+.student-add { display: flex; flex-wrap: wrap; gap: 8px; }
+.student-panel > .local-note { flex-basis: 100%; margin: 0; }
+#profile-status:empty { display: none; }

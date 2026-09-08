@@ -6,7 +6,6 @@ import {
   ROUND_LENGTH,
   STORAGE_KEY,
   freshProgress,
-  parseProgress,
   status,
   hint,
   Mission,
@@ -25,11 +24,14 @@ export function mountGame(root) {
     frame = null,
     soundContext = null,
     stale = false;
+  let roster = loadProfiles(null, null);
   try {
-    data = parseProgress(localStorage.getItem(STORAGE_KEY));
+    roster = loadProfiles(localStorage.getItem(PROFILES_KEY), localStorage.getItem(STORAGE_KEY));
+    data = roster.profiles.find(p => p.id === roster.active).progress;
   } catch {
+    stale = true;
     warning(
-      "Saved progress could not be loaded. You can still play; new progress will start here.",
+      "Saved profiles could not be loaded. Existing data has not been overwritten. Reload before continuing; do not clear browser storage.",
     );
   }
   function warning(text) {
@@ -460,10 +462,9 @@ export function mountGame(root) {
     $("reset").focus();
   });
   on($("reset-yes"), "click", () => {
-    stopClock();
-    data = freshProgress();
-    mission = null;
-    save();
+    const cleared = freshProgress();
+    cleared.student = data.student;
+    if (!switchStudent(roster.active, cleared)) return;
     $("reset-confirm").hidden = true;
     showScreen("ready");
     $("setup").hidden = false;
@@ -582,6 +583,7 @@ export function mountGame(root) {
   });
   setup();
   updateStats();
+  if (stale) root.querySelectorAll("button, input, select").forEach(el => { el.disabled = true; });
   return () => {
     stopClock();
     listeners.forEach((off) => off());

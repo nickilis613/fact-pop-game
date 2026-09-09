@@ -1,4 +1,4 @@
-import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js";
+import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=usernames-1";
 import { cloudConfig } from "./cloud-config.js";
 import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js";
 import { exportProgressCSV, importProgressCSV } from "./progress-csv.js";

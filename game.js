@@ -154,7 +154,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("all-tables").textContent =
       data.settings.tables.length === 11 ? "Use starter set" : "Select all";
     $("round-label").textContent =
-      data.settings.mode === "sprint" ? "12 facts · speed bonuses" : "12 facts · your pace";
+      data.settings.mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
     $("sound").setAttribute("aria-pressed", String(data.settings.sound));
     $("sound").innerHTML = `♪ <span>Sound ${data.settings.sound ? "on" : "off"}</span>`;
   }
@@ -187,7 +187,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("setup").hidden = true;
     $("mission-label").textContent =
       `${data.settings.mode === "sprint" ? "SPRINT" : data.settings.mode === "choice" ? "CHOOSE" : "RECALL"} MISSION`;
-    $("arena-status").textContent = "One fact at a time. You’ve got this.";
+    $("arena-status").textContent = "Practicing";
     showScreen("question");
     renderQuestion();
     updateStats();
@@ -247,7 +247,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       if (result.correct) {
         $("feedback").className = "feedback correct";
         $("feedback").innerHTML =
-          `<strong>You’ve got it: ${q.a} × ${q.b} = ${q.answer}.</strong><span class="hint">Let’s give that fact a little time to stick.</span>`;
+          `<strong>You’ve got it: ${q.a} × ${q.b} = ${q.answer}.</strong>`;
         showNext();
       } else {
         $("feedback").innerHTML =
@@ -268,7 +268,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("feedback").className = `feedback ${result.correct ? "correct" : "wrong"}`;
     if (result.correct) {
       $("feedback").innerHTML =
-        `<strong>${result.streakBonus ? "Streak bonus. Keep it popping!" : mission.settings.mode === "choice" ? "That’s the one. Nice work!" : "That’s it. Nice recall!"} +${result.earned} XP</strong><span class="hint">${q.a} × ${q.b} = ${q.answer}${result.speed ? " · Speed bonus earned" : ""}</span>`;
+        `<strong>${result.streakBonus ? "Streak bonus!" : mission.settings.mode === "choice" ? "Correct!" : "Correct!"} +${result.earned} XP</strong><span class="hint">${q.a} × ${q.b} = ${q.answer}${result.speed ? " · Speed bonus earned" : ""}</span>`;
       $("equation").classList.remove("pop");
       void $("equation").offsetWidth;
       $("equation").classList.add("pop");
@@ -317,22 +317,22 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       ? (times[Math.floor((times.length - 1) / 2)] + times[Math.floor(times.length / 2)]) / 2
       : null;
     $("result-title").textContent = !h.length
-      ? "A fresh start is waiting."
+      ? "Mission ended"
       : correct.length === h.length
-        ? "A perfect little mission!"
-        : "Look at you grow.";
+        ? "All answers correct!"
+        : "Mission complete";
     $("result-message").textContent = h.length
-      ? `${correct.length} of ${h.length} right on the first try. ${correct.length === h.length ? "Enjoy the win, then take a break or play again." : "Every tricky fact is a chance to learn."}`
-      : "No answers recorded. Come back when you’re ready.";
+      ? `${correct.length} of ${h.length} right on the first try.`
+      : "No answers recorded.";
     $("result-stats").innerHTML =
       `<div><strong>+${mission.xp}</strong><span>XP collected</span></div><div><strong>${h.length ? Math.round((correct.length / h.length) * 100) + "%" : "—"}</strong><span>first-try accuracy</span></div><div><strong>${median !== null ? (median / 1000).toFixed(1) + "s" : "—"}</strong><span>${mission.settings.mode === "choice" ? "median choice time" : "median correct recall"}</span></div>`;
     const missed = [...new Map(h.filter((r) => !r.correct).map((r) => [r.key, r])).values()];
     $("review-facts").innerHTML = missed.length
-      ? "<strong>A little more practice for these:</strong>" +
+      ? "<strong>Facts to review:</strong>" +
         missed.map((r) => `<span>${r.a} × ${r.b} = ${r.a * r.b}</span>`).join("")
       : "";
     $("round-label").textContent = `${h.length} facts practiced`;
-    $("arena-status").textContent = "Your effort adds up.";
+    $("arena-status").textContent = "Mission complete";
     $("replay").focus({ preventScroll: true });
   }
   function pause() {
@@ -360,10 +360,10 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     });
     $("page-title").innerHTML =
       page === "facts"
-        ? "Little facts. <span>Big progress.</span>"
+        ? "Fact progress"
         : page === "guide"
-          ? "A little help. <span>A lot of growth.</span>"
-          : "Ready, set, <span>multiply.</span>";
+          ? "How to play"
+          : "Multiplication practice";
     updateStats();
     $("main").focus({ preventScroll: true });
   }
@@ -542,7 +542,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     showScreen("ready");
     $("setup").hidden = false;
     $("mission-label").textContent = "YOUR NEXT MISSION";
-    $("arena-status").textContent = "Made for your growing brain";
+    $("arena-status").textContent = "Ready";
     $("fact-detail").textContent = "Choose a fact below.";
     setup(); updateStats();
     if (online && incoming) cloudSaves.save(id, incoming);

@@ -663,7 +663,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     switchStudent(roster.active);
     $("cloud-who").textContent = "";
     $("cloud-local-picker").replaceChildren();
-    $("cloud-status").textContent = "Signed out. Back to this browser’s local profiles.";
+    $("cloud-status").textContent = "";
   });
   on($("cloud-reload"), "click", async () => {
     if (cloudBusy) return;

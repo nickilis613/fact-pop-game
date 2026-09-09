@@ -1416,3 +1416,6 @@ footer {
 .cloud-panel input, .cloud-panel select { font: inherit; padding: 10px; border: 1px solid #bbcabe; border-radius: 10px; max-width: 100%; margin-right: 8px; }
 .cloud-panel p { line-height: 1.5; }
 #cloud-status { font-weight: 600; overflow-wrap: anywhere; }
+
+.cloud-panel { margin-top: 28px; }
+#cloud-status:empty { display: none; }

@@ -507,6 +507,72 @@ h1 span {
   color: var(--lime);
   font-size: 27px;
 }
+.daily-goal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 22px 0 12px;
+}
+.daily-goal strong {
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+.daily-goal span,
+.daily-message,
+.daily-note {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #e1d9ff;
+}
+.daily-ticker {
+  display: flex;
+  gap: 9px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.daily-ticker li {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  border: 1px solid #ffffff60;
+  border-radius: 10px;
+  background: #ffffff15;
+  font-size: 18px;
+  font-weight: 800;
+  transition: background 0.2s, color 0.2s;
+}
+.daily-ticker li.complete {
+  background: var(--lime);
+  color: #30245c;
+  border-color: var(--lime);
+}
+.daily-message {
+  margin: 12px 0 20px;
+}
+.daily-card .energy-number {
+  flex-wrap: wrap;
+  padding-top: 20px;
+  border-top: 1px solid #ffffff35;
+}
+.daily-card .energy-number strong {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.daily-card .energy-number > span,
+.daily-card .mini-stats span {
+  font-size: 14px;
+}
+.daily-note {
+  margin: 18px 0 0;
+}
+.result-daily {
+  color: var(--purple);
+  font-weight: 700;
+  line-height: 1.6;
+}
 .energy-number {
   display: flex;
   align-items: baseline;
@@ -1203,7 +1269,7 @@ footer {
   }
   .sidebar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
     margin-top: 6px;
   }
   .tip-card,
@@ -1402,7 +1468,7 @@ footer {
 .data-actions label { font-weight: 600; }
 #transfer-status { overflow-wrap: anywhere; }
 
-.student-panel { display: flex; flex-wrap: wrap; align-items: start; gap: 18px 32px; background: #fff; border: 1px solid #dce5df; border-radius: 18px; padding: 20px; margin-bottom: 24px; }
+.student-panel { display: flex; flex-wrap: wrap; align-items: start; gap: 18px 32px; background: #fff; border: 1px solid #dce5df; border-radius: 18px; padding: 20px; margin: 28px 0 24px; }
 .student-panel label { display: block; font-weight: 700; margin-bottom: 8px; }
 .student-panel select, .student-panel input, #import-target { font: inherit; padding: 10px 12px; border: 1px solid #bbcabe; border-radius: 10px; max-width: 100%; background: white; color: #203c30; }
 .student-panel select { min-width: 200px; }

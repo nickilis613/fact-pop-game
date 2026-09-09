@@ -1,4 +1,5 @@
 export const ROUND_LENGTH = 12;
+export const DAILY_ROUND_GOAL = 3;
 export const STORAGE_KEY = "fact-pop.progress.v2";
 export const TABLES = Array.from({ length: 11 }, (_, i) => i + 2);
 export const factKey = (a, b) => [Math.min(a, b), Math.max(a, b)].join("x");
@@ -11,10 +12,20 @@ export const freshProgress = () => ({
   xp: 0,
   missions: 0,
   nextMission: 0,
+  daily: null,
   facts: {},
   settings: { mode: "recall", tables: [2, 5, 10], goal: 5000, sound: false },
 });
 const count = (n) => Number.isSafeInteger(n) && n >= 0 && n <= 1e9;
+export function localDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+export function dailyProgress(progress, date = new Date()) {
+  const key = localDateKey(date);
+  return progress.daily?.date === key
+    ? progress.daily
+    : { date: key, rounds: 0, xp: 0, streak: 0, best: 0 };
+}
 export function parseProgress(raw) {
   if (!raw) return freshProgress();
   const p = JSON.parse(raw);
@@ -35,6 +46,21 @@ export function parseProgress(raw) {
   result.xp = p.xp;
   result.missions = p.missions;
   result.nextMission = p.nextMission;
+  // Older saves have no daily evidence; preserve lifetime progress without
+  // guessing how much of it was earned today.
+  if (p.daily != null) {
+    const d = p.daily;
+    if (
+      typeof d.date !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(d.date) ||
+      localDateKey(new Date(d.date + "T12:00:00")) !== d.date ||
+      ![d.rounds, d.xp, d.streak, d.best].every(count) ||
+      d.streak > d.best ||
+      d.xp > p.xp ||
+      d.rounds > p.nextMission
+    ) throw Error("Invalid daily progress");
+    result.daily = { date: d.date, rounds: d.rounds, xp: d.xp, streak: d.streak, best: d.best };
+  }
   for (const f of FACTS) {
     const r = p.facts[f.key];
     if (!r) continue;
@@ -129,10 +155,12 @@ export function hint(a, b) {
   return `Use ${a - 1} × ${b}, then add one more ${b}: ${(a - 1) * b} + ${b} = ${a * b}.`;
 }
 export class Mission {
-  constructor(progress, { rng = Math.random, clock = () => performance.now() } = {}) {
+  constructor(progress, { rng = Math.random, clock = () => performance.now(), date = () => new Date() } = {}) {
     this.progress = progress;
     this.rng = rng;
     this.clock = clock;
+    this.date = date;
+    this.dailyRoundCounted = false;
     this.settings = { ...progress.settings, tables: [...progress.settings.tables] };
     this.id = ++progress.nextMission;
     this.history = [];
@@ -204,7 +232,10 @@ export class Mission {
     const q = this.question;
     if (this.stage === "retry") {
       const correct = value === q.answer;
-      if (correct) this.stage = "feedback";
+      if (correct) {
+        this.stage = "feedback";
+        this.countDailyRound();
+      }
       return { guided: true, correct, earned: 0 };
     }
     this.elapsed = this.elapsedMs();
@@ -220,6 +251,10 @@ export class Mission {
     const earned = 20 + (correct ? 80 : 0) + speed + streakBonus;
     this.xp += earned;
     this.progress.xp += earned;
+    const daily = (this.progress.daily = dailyProgress(this.progress, this.date()));
+    daily.xp += earned;
+    daily.streak = correct ? daily.streak + 1 : 0;
+    daily.best = Math.max(daily.best, daily.streak);
     const r = (this.progress.facts[q.key] ||= {
       attempts: 0,
       correct: 0,
@@ -255,7 +290,14 @@ export class Mission {
       this.queue.push({ key: q.key, due: this.history.length + 2 });
     }
     this.stage = correct ? "feedback" : "retry";
+    if (correct) this.countDailyRound();
     return { correct, earned, guided: false, speed, streakBonus };
+  }
+  countDailyRound() {
+    if (this.history.length !== ROUND_LENGTH || this.dailyRoundCounted) return;
+    const daily = (this.progress.daily = dailyProgress(this.progress, this.date()));
+    daily.rounds++;
+    this.dailyRoundCounted = true;
   }
   pause() {
     if (this.finished || this.stage === "paused") return false;

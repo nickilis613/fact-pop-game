@@ -7,7 +7,7 @@ import { STORAGE_KEY, freshProgress } from '../engine.js';
 function element() {
   return {value: '', hidden: false, style: {}, dataset: {}, handlers: {}, innerHTML: '',
     addEventListener(name, fn) { this.handlers[name] = fn; }, removeEventListener() {},
-    setAttribute() {}, removeAttribute() {}, focus() {},
+    setAttribute() {}, removeAttribute() {}, focus() {}, scrollIntoView() {},
     classList: {toggle() {}, remove() {}, add() {}},
     querySelectorAll() {return [];}, replaceChildren(...children) {this.children = children;},
     fire(name) { return this.handlers[name]({preventDefault() {}}); }
@@ -89,4 +89,53 @@ test('parent sees linked online profiles only and cannot use teacher controls', 
   assert.equal(get('reset-yes').disabled,true);
   assert.equal(get('import-file').disabled,true);
   off();
+});
+
+test('daily tracker fills three rounds, retains totals on reload, and starts fresh for a new student', async () => {
+  const stored = new Map();
+  globalThis.localStorage = {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value)};
+  globalThis.document = {...element(), createElement: element};
+  globalThis.window = element();
+  function mount() {
+    const els = new Map();
+    const steps = Array.from({length: 3}, element);
+    const root = {...element(), querySelector(id) {
+      if (!els.has(id)) els.set(id, element());
+      return els.get(id);
+    }};
+    root.querySelector('#daily-ticker').querySelectorAll = () => steps;
+    const off = mountGame(root);
+    return {get: id => root.querySelector('#' + id), steps, off};
+  }
+  let ui = mount();
+  try {
+    assert.equal(ui.get('daily-rounds').textContent, '0 / 3');
+    for (let rounds = 1; rounds <= 3; rounds++) {
+      await ui.get(rounds === 1 ? 'start' : 'replay').fire('click');
+      for (let question = 0; question < 12; question++) {
+        const [a, b] = ui.get('equation').innerHTML.match(/\d+/g).map(Number);
+        ui.get('answer').value = String(a * b);
+        ui.get('answer-form').fire('submit');
+        ui.get('next').fire('click');
+      }
+      assert.equal(ui.get('daily-rounds').textContent, `${rounds} / 3`);
+      assert.equal(ui.get('daily-xp').textContent, (rounds * 1300).toLocaleString());
+      assert.equal(Number(ui.get('daily-streak').textContent), rounds * 12);
+      assert.equal(ui.steps.filter(step => step.textContent === '✓').length, rounds);
+    }
+    assert.match(ui.get('daily-message').textContent, /goal reached/);
+    assert.match(ui.get('result-daily').textContent, /3 rounds/);
+    ui.off();
+    ui = mount();
+    assert.equal(ui.get('daily-rounds').textContent, '3 / 3');
+    assert.equal(ui.get('daily-xp').textContent, (3900).toLocaleString());
+    assert.equal(Number(ui.get('daily-best').textContent), 36);
+    ui.get('new-student-name').value = 'Another student';
+    ui.get('add-student-form').fire('submit');
+    assert.equal(ui.get('daily-rounds').textContent, '0 / 3');
+    assert.equal(ui.get('daily-xp').textContent, '0');
+    assert.equal(Number(ui.get('daily-best').textContent), 0);
+  } finally {
+    ui.off();
+  }
 });

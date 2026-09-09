@@ -1,17 +1,20 @@
-import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=usernames-1";
+import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=daily-rounds-1";
 import { cloudConfig } from "./cloud-config.js";
-import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js";
-import { exportProgressCSV, importProgressCSV } from "./progress-csv.js";
+import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=daily-rounds-1";
+import { exportProgressCSV, importProgressCSV } from "./progress-csv.js?v=daily-rounds-1";
 import {
   FACTS,
   TABLES,
   ROUND_LENGTH,
+  DAILY_ROUND_GOAL,
+  dailyProgress,
+  localDateKey,
   STORAGE_KEY,
   freshProgress,
   status,
   hint,
   Mission,
-} from "./engine.js";
+} from "./engine.js?v=daily-rounds-1";
 
 export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } = {}) {
   const $ = (id) => root.querySelector("#" + id);
@@ -109,10 +112,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     const level = Math.floor(data.xp / 500) + 1;
     $("level-label").textContent =
       `Level ${level} · ${level < 4 ? "Fact explorer" : level < 10 ? "Pattern finder" : "Recall adventurer"}`;
-    $("round-xp").textContent = (mission?.xp || 0).toLocaleString();
-    $("streak").textContent = mission?.streak || 0;
-    $("best-streak").textContent = mission?.best || 0;
-    $("energy-fill").style.width = `${((mission?.history.length || 0) / ROUND_LENGTH) * 100}%`;
+    updateDailyStats();
     const secure = FACTS.filter((f) => status(data.facts[f.key]) === "secure").length;
     $("secure-count").textContent = `${secure} / 66`;
     const featured = [
@@ -132,8 +132,31 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       )
       .join("");
     $("lifetime-summary").textContent =
-      `${data.missions} missions finished · ${Object.values(data.facts).reduce((n, r) => n + r.attempts, 0)} first attempts · ${secure} facts feeling fluent.`;
+      `${data.missions} rounds played · ${Object.values(data.facts).reduce((n, r) => n + r.attempts, 0)} first attempts · ${secure} facts feeling fluent.`;
     if (page === "facts") renderFacts();
+  }
+  let displayedDate = localDateKey();
+  function updateDailyStats() {
+    const daily = dailyProgress(data);
+    displayedDate = daily.date;
+    $("daily-rounds").textContent = `${daily.rounds} / ${DAILY_ROUND_GOAL}`;
+    $("daily-ticker").querySelectorAll("li").forEach((step, index) => {
+      const complete = daily.rounds > index;
+      step.classList.toggle("complete", complete);
+      step.textContent = complete ? "✓" : String(index + 1);
+      step.setAttribute("aria-label", `Round ${index + 1}: ${complete ? "complete" : "still to go"}`);
+    });
+    const remaining = Math.max(0, DAILY_ROUND_GOAL - daily.rounds);
+    const message = !remaining
+      ? "Daily goal reached! Extra rounds are welcome."
+      : daily.rounds === 0
+        ? "Let’s play your first round."
+        : `${remaining} more ${remaining === 1 ? "round" : "rounds"} to your daily goal.`;
+    if ($("daily-message").textContent !== message) $("daily-message").textContent = message;
+    $("daily-xp").textContent = daily.xp.toLocaleString();
+    $("daily-streak").textContent = daily.streak;
+    $("daily-best").textContent = daily.best;
+    $("result-daily").textContent = `Today: ${daily.rounds} ${daily.rounds === 1 ? "round" : "rounds"} · ${daily.xp.toLocaleString()} XP · best streak ${daily.best}`;
   }
   function setup() {
     renderStudents();
@@ -186,7 +209,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     save();
     $("setup").hidden = true;
     $("mission-label").textContent =
-      `${data.settings.mode === "sprint" ? "SPRINT" : data.settings.mode === "choice" ? "CHOOSE" : "RECALL"} MISSION`;
+      `${data.settings.mode === "sprint" ? "SPRINT" : data.settings.mode === "choice" ? "CHOOSE" : "RECALL"} ROUND`;
     $("arena-status").textContent = "Practicing";
     showScreen("question");
     renderQuestion();
@@ -291,7 +314,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("check").disabled = true;
     $("next").hidden = false;
     $("next").textContent =
-      mission.history.length === ROUND_LENGTH ? "See my mission →" : "Next fact →";
+      mission.history.length === ROUND_LENGTH ? "See my round →" : "Next fact →";
     $("keyboard-tip").textContent = "Press Enter to continue";
     $("next").focus({ preventScroll: true });
   }
@@ -316,13 +339,15 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     const median = times.length
       ? (times[Math.floor((times.length - 1) / 2)] + times[Math.floor(times.length / 2)]) / 2
       : null;
-    $("result-title").textContent = !h.length
-      ? "Mission ended"
+    const completed = h.length === ROUND_LENGTH && mission.dailyRoundCounted;
+    $("result-eyebrow").textContent = completed ? "ROUND COMPLETE" : "ROUND ENDED";
+    $("result-title").textContent = !completed
+      ? "Round ended"
       : correct.length === h.length
         ? "All answers correct!"
-        : "Mission complete";
+        : "Round complete";
     $("result-message").textContent = h.length
-      ? `${correct.length} of ${h.length} right on the first try.`
+      ? `${correct.length} of ${h.length} right on the first try.${completed ? "" : " Your XP counts toward today. Finish all 12 questions to add a round to your daily goal."}`
       : "No answers recorded.";
     $("result-stats").innerHTML =
       `<div><strong>+${mission.xp}</strong><span>XP collected</span></div><div><strong>${h.length ? Math.round((correct.length / h.length) * 100) + "%" : "—"}</strong><span>first-try accuracy</span></div><div><strong>${median !== null ? (median / 1000).toFixed(1) + "s" : "—"}</strong><span>${mission.settings.mode === "choice" ? "median choice time" : "median correct recall"}</span></div>`;
@@ -332,7 +357,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
         missed.map((r) => `<span>${r.a} × ${r.b} = ${r.a * r.b}</span>`).join("")
       : "";
     $("round-label").textContent = `${h.length} facts practiced`;
-    $("arena-status").textContent = "Mission complete";
+    $("arena-status").textContent = completed ? "Round complete" : "Round ended";
     $("replay").focus({ preventScroll: true });
   }
   function pause() {
@@ -414,7 +439,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     mission = null;
     showScreen("ready");
     $("setup").hidden = false;
-    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("mission-label").textContent = "YOUR NEXT ROUND";
     setup();
     updateStats();
     $("start").focus();
@@ -446,7 +471,9 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   });
   on(document, "visibilitychange", () => {
     if (document.hidden && page === "play") pause();
+    if (!document.hidden) updateDailyStats();
   });
+  on(window, "focus", updateDailyStats);
   on(window, "keydown", (e) => {
     if (
       page !== "play" ||
@@ -488,7 +515,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("reset-confirm").hidden = true;
     showScreen("ready");
     $("setup").hidden = false;
-    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("mission-label").textContent = "YOUR NEXT ROUND";
     $("fact-detail").textContent = "Choose a fact below.";
     setup();
     updateStats();
@@ -515,7 +542,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   on($("export"), "click", downloadProgress);
   function previewImport(progress) {
     pendingProgress = progress;
-    $("import-summary").textContent = "Switch to " + (progress.student || "a new unnamed student") + "? " + progress.xp + " XP · " + progress.missions + " missions · " + Object.keys(progress.facts).length + " facts practiced.";
+    $("import-summary").textContent = "Switch to " + (progress.student || "a new unnamed student") + "? " + progress.xp + " XP · " + progress.missions + " rounds · " + Object.keys(progress.facts).length + " facts practiced.";
     $("import-target").value = "new";
     $("import-confirm").hidden = false;
     $("import-backup").focus();
@@ -541,7 +568,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("reset-confirm").hidden = true;
     showScreen("ready");
     $("setup").hidden = false;
-    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("mission-label").textContent = "YOUR NEXT ROUND";
     $("arena-status").textContent = "Ready";
     $("fact-detail").textContent = "Choose a fact below.";
     setup(); updateStats();
@@ -613,8 +640,8 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("cloud-signin").disabled = cloudBusy;
     $("check").disabled = cloudBusy || !$("answer").value;
     $("profile-location").textContent = online
-      ? "Online profiles for this account. Switching ends the open mission; answered facts are saved."
-      : "Profiles stay on this browser. Switching ends the open mission; answered facts are saved.";
+      ? "Online profiles for this account. Switching ends the open round; answered facts are saved."
+      : "Profiles stay on this browser. Switching ends the open round; answered facts are saved.";
   }
   function setCloudRows(rows) {
     cloudSaves = new CloudSaves(cloud, cloudStatus);
@@ -629,14 +656,14 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("transfer-status").textContent = "";
     $("profile-status").textContent = "";
     $("setup").hidden = false;
-    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("mission-label").textContent = "YOUR NEXT ROUND";
     $("fact-detail").textContent = "Choose a fact below.";
     setup(); updateStats();
   }
   on($("cloud-login"), "submit", async e => {
     e.preventDefault();
     if (cloudBusy || stale) return;
-    if (mission && !mission.finished) { $("cloud-status").textContent = "Finish the current mission before signing in."; return; }
+    if (mission && !mission.finished) { $("cloud-status").textContent = "Finish the current round before signing in."; return; }
     cloudBusy = true; cloudControls();
     try {
       await cloud.signIn($("cloud-email").value.trim(), $("cloud-password").value);
@@ -668,7 +695,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   on($("cloud-reload"), "click", async () => {
     if (cloudBusy) return;
     if (!await cloudSaves.flush() && !window.confirm("Reload the online copy and discard this page’s unsynced answers? Download a CSV backup first to keep them.")) return;
-    if (mission && !mission.finished && !window.confirm("End this mission and reload online progress?")) return;
+    if (mission && !mission.finished && !window.confirm("End this round and reload online progress?")) return;
     cloudBusy = true; cloudControls();
     try { setCloudRows(await cloud.students()); cloudStatus(); }
     catch (error) { $("cloud-status").textContent = error.message; }
@@ -719,9 +746,13 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   });
   setup();
   updateStats();
+  const dailyRefresh = setInterval(() => {
+    if (displayedDate !== localDateKey()) updateDailyStats();
+  }, 1000);
   if (stale) root.querySelectorAll("button, input, select").forEach(el => { el.disabled = true; });
   return () => {
     stopClock();
+    clearInterval(dailyRefresh);
     listeners.forEach((off) => off());
     soundContext?.close().catch(() => {});
   };

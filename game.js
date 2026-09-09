@@ -29,6 +29,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     frame = null,
     soundContext = null,
     stale = false;
+  let fluencyAnimation = null;
   let online = false, teacher = false, cloudBusy = false, localRoster = null;
   const cloud = cloudClient;
   let cloudSaves = new CloudSaves(cloud, cloudStatus);
@@ -107,7 +108,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   function showScreen(name) {
     for (const n of ["ready", "question", "pause", "results"]) $(n + "-screen").hidden = n !== name;
   }
-  function updateStats() {
+  function updateStats(animateFluency = false) {
     $("total-xp").textContent = data.xp.toLocaleString();
     const level = Math.floor(data.xp / 500) + 1;
     $("level-label").textContent =
@@ -133,7 +134,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       .join("");
     $("lifetime-summary").textContent =
       `${data.missions} rounds played · ${Object.values(data.facts).reduce((n, r) => n + r.attempts, 0)} first attempts · ${secure} facts feeling fluent.`;
-    if (page === "facts") renderFacts();
+    if (page === "facts") renderFacts(animateFluency);
   }
   let displayedDate = localDateKey();
   function updateDailyStats() {
@@ -367,13 +368,34 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       $("resume").focus({ preventScroll: true });
     }
   }
-  function renderFacts() {
+  function renderFacts(animate = false) {
+    const fluent = FACTS.filter((f) => status(data.facts[f.key]) === "secure").length;
+    const fraction = fluent / FACTS.length;
+    $("fluency-count").textContent = `${fluent} / ${FACTS.length}`;
+    $("fluency-percent").textContent = `${Math.round(fraction * 100)}%`;
+    $("fluency-progress").setAttribute("aria-valuemax", String(FACTS.length));
+    $("fluency-progress").setAttribute("aria-valuenow", String(fluent));
+    $("fluency-progress").setAttribute("aria-valuetext", `${fluent} of ${FACTS.length} facts feeling fluent`);
+    const fill = $("fluency-fill");
+    const transform = `scaleX(${fraction})`;
+    fluencyAnimation?.cancel();
+    fluencyAnimation = null;
+    fill.style.transform = transform;
+    if (animate && fluent > 0 && fill.animate && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      fluencyAnimation = fill.animate(
+        [{ transform: "scaleX(0)" }, { transform }],
+        { duration: 1000, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+      );
+    }
     $("fact-grid").innerHTML = FACTS.map((f) => {
       const s = status(data.facts[f.key]);
       return `<button class="fact-cell ${s}" data-fact="${f.key}" aria-label="${f.a} times ${f.b}, ${s === "secure" ? "feeling fluent" : s === "learning" ? "practicing" : "new"}">${f.a} × ${f.b}<span>${s === "secure" ? "✓ Fluent" : s === "learning" ? "Practicing" : "New"}</span></button>`;
     }).join("");
   }
   function navigate(destination) {
+    const enteringFacts = destination === "facts" && page !== "facts";
+    fluencyAnimation?.cancel();
+    fluencyAnimation = null;
     if (destination !== "play" && mission && !mission.finished) pause();
     page = destination;
     for (const p of ["play", "facts", "guide"]) $(p + "-page").hidden = p !== page;
@@ -389,7 +411,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
         : page === "guide"
           ? "How to play"
           : "Multiplication practice";
-    updateStats();
+    updateStats(enteringFacts);
     $("main").focus({ preventScroll: true });
   }
   on(root, "click", (event) => {
@@ -752,6 +774,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   if (stale) root.querySelectorAll("button, input, select").forEach(el => { el.disabled = true; });
   return () => {
     stopClock();
+    fluencyAnimation?.cancel();
     clearInterval(dailyRefresh);
     listeners.forEach((off) => off());
     soundContext?.close().catch(() => {});

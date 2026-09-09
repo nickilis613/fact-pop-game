@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mountGame } from '../game.js';
 import { PROFILES_KEY } from '../profiles.js';
-import { STORAGE_KEY, freshProgress } from '../engine.js';
+import { STORAGE_KEY, freshProgress, FACTS } from '../engine.js';
 
 function element() {
-  return {value: '', hidden: false, style: {}, dataset: {}, handlers: {}, innerHTML: '',
+  return {value: '', hidden: false, style: {}, dataset: {}, handlers: {}, attributes: {}, innerHTML: '',
     addEventListener(name, fn) { this.handlers[name] = fn; }, removeEventListener() {},
-    setAttribute() {}, removeAttribute() {}, focus() {}, scrollIntoView() {},
+    setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute() {}, focus() {}, scrollIntoView() {},
     classList: {toggle() {}, remove() {}, add() {}},
     querySelectorAll() {return [];}, replaceChildren(...children) {this.children = children;},
     fire(name) { return this.handlers[name]({preventDefault() {}}); }
@@ -138,4 +138,72 @@ test('daily tracker fills three rounds, retains totals on reload, and starts fre
   } finally {
     ui.off();
   }
+});
+
+test('My facts counts fluent records and animates on entry, with independent student totals and reduced motion', () => {
+  function progress(fluent) {
+    const data = freshProgress();
+    data.nextMission = 2;
+    for (const fact of FACTS.slice(0, fluent)) data.facts[fact.key] = {
+      attempts: 3, correct: 3, typed: 3, typedCorrect: 3,
+      lastSeen: 100, lastCorrect: true,
+      recent: [1, 1, 2].map(mission => ({correct: true, ms: 1500, mission, paused: false})),
+    };
+    return data;
+  }
+  const half = progress(34);
+  half.facts[FACTS[33].key].recent[2].ms = 4000;
+  const stored = new Map([[PROFILES_KEY, JSON.stringify({version: 1, active: 'half', profiles: [
+    {id: 'half', progress: half}, {id: 'all', progress: progress(66)}, {id: 'new', progress: freshProgress()},
+  ]})]]);
+  globalThis.localStorage = {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value)};
+  globalThis.document = {...element(), createElement: element};
+  let reducedMotion = false;
+  globalThis.window = {...element(), matchMedia: () => ({matches: reducedMotion})};
+  const els = new Map(), animations = [];
+  const root = {...element(), contains: () => true, querySelector(id) {
+    if (!els.has(id)) els.set(id, element());
+    return els.get(id);
+  }};
+  const get = id => root.querySelector('#' + id);
+  get('fluency-fill').animate = (frames, options) => {
+    const animation = {frames, options, cancelled: false, cancel() {this.cancelled = true;}};
+    animations.push(animation);
+    return animation;
+  };
+  const off = mountGame(root);
+  const navigate = page => {
+    const button = {...element(), dataset: {page}, closest() {return this;}};
+    root.handlers.click({target: button});
+  };
+  try {
+    assert.equal(animations.length, 0);
+    navigate('facts');
+    assert.equal(get('fluency-count').textContent, '33 / 66');
+    assert.equal(get('fluency-percent').textContent, '50%');
+    assert.equal(get('fluency-progress').attributes['aria-valuenow'], '33');
+    assert.equal(get('fluency-progress').attributes['aria-valuetext'], '33 of 66 facts feeling fluent');
+    assert.equal(get('fluency-fill').style.transform, 'scaleX(0.5)');
+    assert.deepEqual(animations[0].frames, [{transform: 'scaleX(0)'}, {transform: 'scaleX(0.5)'}]);
+    navigate('play');
+    assert.equal(animations[0].cancelled, true);
+    navigate('facts');
+    assert.equal(animations.length, 2);
+    get('student-picker').value = 'all';
+    get('student-picker').fire('change');
+    assert.equal(animations[1].cancelled, true);
+    assert.equal(get('fluency-count').textContent, '66 / 66');
+    assert.equal(get('fluency-percent').textContent, '100%');
+    assert.equal(get('fluency-fill').style.transform, 'scaleX(1)');
+    reducedMotion = true;
+    navigate('play'); navigate('facts');
+    assert.equal(animations.length, 2);
+    assert.equal(get('fluency-fill').style.transform, 'scaleX(1)');
+    get('student-picker').value = 'new';
+    get('student-picker').fire('change');
+    assert.equal(get('fluency-count').textContent, '0 / 66');
+    assert.equal(get('fluency-percent').textContent, '0%');
+    assert.equal(get('fluency-fill').style.transform, 'scaleX(0)');
+    assert.equal(get('fluency-progress').attributes['aria-valuenow'], '0');
+  } finally { off(); }
 });

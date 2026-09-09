@@ -21,14 +21,14 @@
     />
     <title>Fact Pop! — Multiplication practice</title>
     <link rel="icon" href="./public/favicon.svg" />
-    <link rel="stylesheet" href="./styles.css?v=play-first-1" />
+    <link rel="stylesheet" href="./styles.css?v=fluency-bar-1" />
   </head>
   <body>
     <div id="fact-pop"></div>
     <noscript>Enable JavaScript to play Fact Pop.</noscript>
     <script type="module">
-      import { view } from "./game-view.js?v=play-first-1";
-      import { mountGame } from "./game.js?v=daily-rounds-1";
+      import { view } from "./game-view.js?v=fluency-bar-1";
+      import { mountGame } from "./game.js?v=fluency-bar-1";
       const root = document.getElementById("fact-pop");
       root.innerHTML = view;
       mountGame(root);

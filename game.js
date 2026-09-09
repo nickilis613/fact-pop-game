@@ -1,4 +1,4 @@
-import { CloudClient, CloudSaves } from "./cloud.js";
+import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js";
 import { cloudConfig } from "./cloud-config.js";
 import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js";
 import { exportProgressCSV, importProgressCSV } from "./progress-csv.js";
@@ -644,7 +644,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       const rows = await cloud.students();
       save(); localRoster = roster; online = true;
       setCloudRows(rows);
-      $("cloud-who").textContent = (teacher ? "Teacher: " : "Parent: ") + cloud.session.user.email;
+      $("cloud-who").textContent = (teacher ? "Teacher: " : "Parent: ") + accountLabel(cloud.session.user.email);
       $("cloud-local-picker").replaceChildren(...(teacher ? localRoster.profiles : []).map(p => {
         const option = document.createElement("option"); option.value = p.id; option.textContent = p.progress.student || "Unnamed student"; return option;
       }));
@@ -694,14 +694,14 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     if (!teacher || !roster.active || cloudBusy) return;
     const email = $("cloud-parent-email").value.trim();
     if (!email || !window.confirm("Allow " + email + " to view and update " + (data.student || "this student") + "? They need a confirmed game account first.")) return;
-    try { await cloud.rpc("fact_pop_link_parent", {p_student_id: roster.active, p_email: email}); $("cloud-status").textContent = "Parent linked to this student."; }
+    try { await cloud.rpc("fact_pop_link_parent", {p_student_id: roster.active, p_email: accountEmail(email)}); $("cloud-status").textContent = "Parent linked to this student."; }
     catch (error) { $("cloud-status").textContent = error.message; }
   });
   on($("cloud-revoke"), "click", async () => {
     if (!teacher || !roster.active || cloudBusy) return;
     const email = $("cloud-parent-email").value.trim();
     if (!email || !window.confirm("Remove " + email + "’s access to the selected student?")) return;
-    try { await cloud.rpc("fact_pop_unlink_parent_email", {p_student_id: roster.active, p_email: email}); $("cloud-status").textContent = "Parent access removed."; }
+    try { await cloud.rpc("fact_pop_unlink_parent_email", {p_student_id: roster.active, p_email: accountEmail(email)}); $("cloud-status").textContent = "Parent access removed."; }
     catch (error) { $("cloud-status").textContent = error.message; }
   });
   on(window, "beforeunload", e => {

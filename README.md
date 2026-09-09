@@ -58,3 +58,14 @@ This is a functional local product candidate. A paid release still needs trials 
 The configured Supabase project uses one teacher and explicitly linked parent accounts. The teacher can copy local profiles online, add students, import CSVs, and link/remove a parent by confirmed account email. Parents can practice and download progress only for linked students. Account creation and password recovery currently use Supabase Authentication administration; the game does not send signup/invitation messages. No student accounts are required.
 
 The database rejects concurrent stale writes. If an online save fails, keep the page open and export each affected student as CSV before explicitly reloading online progress. The app does not silently merge or overwrite conflicts. Check the saved-online indicator before closing a tab.
+
+## Username accounts
+
+Parents can sign in with a username; teacher email sign-in still works. Usernames
+are lowercase, 3–32 characters, using letters, numbers, underscores or hyphens.
+For administrator-created username accounts, use `<username>@parents.fact-pop.invalid`
+as the internal Supabase Auth email and confirm the account in the dashboard.
+The reserved `.invalid` address is not a mailbox and receives no recovery emails.
+The teacher must manage password resets through Authentication administration.
+Link/remove access in the game using the plain username. Never save passwords in
+source files or browser configuration.

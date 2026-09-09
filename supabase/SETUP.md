@@ -46,3 +46,14 @@ No student emails or logins are required.
 
 Local data is never uploaded just by signing in. Use Copy selected profile online
 or import its CSV as the teacher. There is no automatic name-based merging.
+
+## Username accounts
+
+Parents can sign in with a username; teacher email sign-in still works. Usernames
+are lowercase, 3–32 characters, using letters, numbers, underscores or hyphens.
+For administrator-created username accounts, use `<username>@parents.fact-pop.invalid`
+as the internal Supabase Auth email and confirm the account in the dashboard.
+The reserved `.invalid` address is not a mailbox and receives no recovery emails.
+The teacher must manage password resets through Authentication administration.
+Link/remove access in the game using the plain username. Never save passwords in
+source files or browser configuration.

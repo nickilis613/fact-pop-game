@@ -1,5 +1,17 @@
 import { parseProgress } from "./engine.js";
 
+const USERNAME_DOMAIN = "parents.fact-pop.invalid";
+export function accountEmail(value) {
+  const login = value.trim().toLowerCase();
+  if (login.includes("@")) return login;
+  if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(login))
+    throw Error("Use a username with 3–32 letters, numbers, underscores or hyphens.");
+  return `${login}@${USERNAME_DOMAIN}`;
+}
+export function accountLabel(email) {
+  return email.endsWith(`@${USERNAME_DOMAIN}`) ? email.slice(0, -(USERNAME_DOMAIN.length + 1)) : email;
+}
+
 export class CloudClient {
   constructor(config, fetcher = (...args) => globalThis.fetch(...args)) {
     this.config = config;
@@ -27,6 +39,7 @@ export class CloudClient {
     this.session = {...session, expiresAt: Date.now() + session.expires_in * 1000};
   }
   async signIn(email, password) {
+    email = accountEmail(email);
     this.setSession(await this.request("/auth/v1/token?grant_type=password", {email, password}));
   }
   async token() {

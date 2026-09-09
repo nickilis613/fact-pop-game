@@ -47,3 +47,24 @@ test('default browser fetch is called with the global receiver', async () => {
   try { await new CloudClient({url:'https://example.supabase.co',key:'public'}).request('/health'); }
   finally {globalThis.fetch=previous;}
 });
+
+test('usernames map consistently while teacher email remains supported', async () => {
+  const {accountEmail,accountLabel}=await import('../cloud.js');
+  assert.equal(accountEmail(' Alivia '),'alivia@parents.fact-pop.invalid');
+  assert.equal(accountEmail('stassi'),'stassi@parents.fact-pop.invalid');
+  assert.equal(accountEmail('Teacher@Example.com'),'teacher@example.com');
+  assert.equal(accountLabel('stassi@parents.fact-pop.invalid'),'stassi');
+  assert.equal(accountLabel('teacher@example.com'),'teacher@example.com');
+  for(const invalid of ['', 'ab', 'has spaces', 'bad!name']) assert.throws(()=>accountEmail(invalid));
+});
+
+test('username password login sends the internal identifier to Supabase',async()=>{
+  let body;
+  const client=new CloudClient({url:'https://example.supabase.co',key:'public'},async(url,options)=>{
+    body=JSON.parse(options.body);
+    return {ok:true,text:async()=>JSON.stringify({access_token:'test',refresh_token:'test',expires_in:3600,user:{email:body.email}})};
+  });
+  await client.signIn('Example_Parent','test-password');
+  assert.equal(body.email,'example_parent@parents.fact-pop.invalid');
+  assert.equal(body.password,'test-password');
+});

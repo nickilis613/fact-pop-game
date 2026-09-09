@@ -9,6 +9,8 @@ for (const file of [
   "engine.js",
   "progress-csv.js",
   "profiles.js",
+  "cloud.js",
+  "cloud-config.js",
   "styles.css",
   "public/favicon.svg",
   "public/og.png",

@@ -1409,3 +1409,10 @@ footer {
 .student-add { display: flex; flex-wrap: wrap; gap: 8px; }
 .student-panel > .local-note { flex-basis: 100%; margin: 0; }
 #profile-status:empty { display: none; }
+
+.cloud-panel { background: #fff; border: 1px solid #dce5df; border-radius: 18px; padding: 20px; margin-bottom: 20px; }
+.cloud-panel h2 { margin-top: 0; }
+.cloud-panel label { display: block; font-weight: 600; margin: 12px 0 6px; }
+.cloud-panel input, .cloud-panel select { font: inherit; padding: 10px; border: 1px solid #bbcabe; border-radius: 10px; max-width: 100%; margin-right: 8px; }
+.cloud-panel p { line-height: 1.5; }
+#cloud-status { font-weight: 600; overflow-wrap: anywhere; }

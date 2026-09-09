@@ -1,3 +1,5 @@
+import { CloudClient, CloudSaves } from "./cloud.js";
+import { cloudConfig } from "./cloud-config.js";
 import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js";
 import { exportProgressCSV, importProgressCSV } from "./progress-csv.js";
 import {
@@ -11,7 +13,7 @@ import {
   Mission,
 } from "./engine.js";
 
-export function mountGame(root) {
+export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } = {}) {
   const $ = (id) => root.querySelector("#" + id);
   const listeners = [];
   const on = (el, event, fn) => {
@@ -24,6 +26,9 @@ export function mountGame(root) {
     frame = null,
     soundContext = null,
     stale = false;
+  let online = false, teacher = false, cloudBusy = false, localRoster = null;
+  const cloud = cloudClient;
+  let cloudSaves = new CloudSaves(cloud, cloudStatus);
   let roster = loadProfiles(null, null);
   try {
     roster = loadProfiles(localStorage.getItem(PROFILES_KEY), localStorage.getItem(STORAGE_KEY));
@@ -39,9 +44,10 @@ export function mountGame(root) {
     $("storage-warning").textContent = text;
   }
   function save() {
-    if (stale) return;
+    if (stale || (online && !roster.active)) return;
     try {
-      roster = storeProfile(localStorage, roster, data, roster.active);
+      roster = storeProfile(online ? {setItem() {}} : localStorage, roster, data, roster.active);
+      if (online) cloudSaves.save(roster.active, data);
     } catch {
       warning(
         "Your browser is not saving progress. You can still play, but this session’s progress may disappear when you leave.",
@@ -131,6 +137,7 @@ export function mountGame(root) {
   }
   function setup() {
     renderStudents();
+    cloudControls();
     $("student-name").value = data.student;
     $("active-student").textContent = `Current student: ${data.student || "Unnamed student"}`;
     root.querySelectorAll("[data-mode]").forEach((b) => {
@@ -159,8 +166,21 @@ export function mountGame(root) {
         : $("answer")
     )?.focus({ preventScroll: true });
   }
-  function start() {
-    if (stale || (mission && !mission.finished)) return;
+  async function start() {
+    if (stale || cloudBusy || (mission && !mission.finished)) return;
+    if (online) {
+      cloudBusy = true; cloudControls();
+      try {
+        if (!await cloudSaves.flush()) throw Error("Progress has not synced. Download a CSV backup before reloading online progress.");
+        const rows = await cloud.students();
+        const row = rows.find(r => r.id === roster.active);
+        if (!row) throw Error("This student is no longer available to this account.");
+        data = row.progress;
+        roster.profiles.find(p => p.id === row.id).progress = data;
+        cloudSaves.register(row);
+      } catch (error) { $("cloud-status").textContent = error.message; return; }
+      finally { cloudBusy = false; cloudControls(); }
+    }
     stopClock();
     mission = new Mission(data);
     save();
@@ -215,7 +235,7 @@ export function mountGame(root) {
     tick();
   }
   function submit(value) {
-    if (page !== "play") return;
+    if (page !== "play" || cloudBusy) return;
     const result = mission?.submit(value);
     if (!result) return;
     stopClock();
@@ -349,7 +369,7 @@ export function mountGame(root) {
   }
   on(root, "click", (event) => {
     const button = event.target.closest("button");
-    if (!button || !root.contains(button) || button.disabled) return;
+    if (!button || !root.contains(button) || button.disabled || cloudBusy) return;
     if (button.dataset.page) navigate(button.dataset.page);
     if (button.dataset.mode && (!mission || mission.finished)) {
       data.settings.mode = button.dataset.mode;
@@ -510,8 +530,8 @@ export function mountGame(root) {
     }));
   }
   function switchStudent(id, incoming) {
-    if (stale) return false;
-    try { roster = storeProfile(localStorage, roster, data, id, incoming); }
+    if (stale || cloudBusy) return false;
+    try { roster = storeProfile(online ? {setItem() {}} : localStorage, roster, data, id, incoming); }
     catch { warning("Could not save student profiles. Nothing was switched. Download the current CSV and free browser storage before trying again."); return false; }
     stopClock();
     data = roster.profiles.find(p => p.id === roster.active).progress;
@@ -525,17 +545,18 @@ export function mountGame(root) {
     $("arena-status").textContent = "Made for your growing brain";
     $("fact-detail").textContent = "Choose a fact below.";
     setup(); updateStats();
+    if (online && incoming) cloudSaves.save(id, incoming);
     return true;
   }
   on($("student-picker"), "change", () => {
     switchStudent($("student-picker").value);
     renderStudents();
   });
-  on($("add-student-form"), "submit", e => {
+  on($("add-student-form"), "submit", async e => {
     e.preventDefault();
     try {
       const progress = newStudent($("new-student-name").value);
-      if (switchStudent(crypto.randomUUID(), progress)) {
+      if (online ? await addOnlineStudent(progress) : switchStudent(crypto.randomUUID(), progress)) {
         $("new-student-name").value = "";
         $("profile-status").textContent = "Added " + progress.student + ". Ready to play!";
       }
@@ -561,9 +582,14 @@ export function mountGame(root) {
     $("import-confirm").hidden = true;
     $("import-file").focus();
   });
-  function applyImport(backup) {
+  async function applyImport(backup) {
     if (!pendingProgress || stale) return;
     if (backup) downloadProgress();
+    if (online && !teacher) return;
+    if (online && $("import-target").value === "new") {
+      if (await addOnlineStudent(pendingProgress)) transferStatus("Student imported online.");
+      return;
+    }
     const target = $("import-target").value === "new" ? crypto.randomUUID() : roster.active;
     if (!switchStudent(target, pendingProgress)) return;
     transferStatus("Ready for " + (data.student || "a new student") + ". Progress saved in this browser.");
@@ -571,8 +597,118 @@ export function mountGame(root) {
   }
   on($("import-backup"), "click", () => applyImport(true));
   on($("import-yes"), "click", () => applyImport(false));
+  function cloudStatus() {
+    if (!online) return;
+    $("cloud-status").textContent = cloudSaves.failed
+      ? "Online save failed or progress changed elsewhere. Your answers remain on this page. Download a CSV backup, then reload online progress."
+      : cloudSaves.dirty ? "Saving online… Keep this page open." : "All progress saved online.";
+  }
+  function cloudControls() {
+    $("cloud-login").hidden = online;
+    $("cloud-account").hidden = !online;
+    $("cloud-teacher").hidden = !online || !teacher;
+    $("add-student-form").hidden = online && !teacher;
+    for (const id of ["student-name", "new-student", "reset", "reset-yes", "import-file", "import-yes", "import-backup"]) $(id).disabled = cloudBusy || (online && !teacher);
+    for (const id of ["start", "replay", "student-picker", "add-student", "cloud-signout", "cloud-reload", "cloud-migrate", "cloud-link", "cloud-revoke", "sound", "speed-goal", "all-tables", "check", "next", "resume", "end"]) $(id).disabled = cloudBusy || (online && !roster.profiles.length && ["start", "replay"].includes(id));
+    $("cloud-signin").disabled = cloudBusy;
+    $("check").disabled = cloudBusy || !$("answer").value;
+    $("profile-location").textContent = online
+      ? "Online profiles for this account. Switching ends the open mission; answered facts are saved."
+      : "Profiles stay on this browser. Switching ends the open mission; answered facts are saved.";
+  }
+  function setCloudRows(rows) {
+    cloudSaves = new CloudSaves(cloud, cloudStatus);
+    rows.forEach(row => cloudSaves.register(row));
+    const active = rows.some(r => r.id === roster.active) ? roster.active : rows[0]?.id || "";
+    roster = {version: 1, active, profiles: rows.map(r => ({id: r.id, progress: r.progress}))};
+    data = roster.profiles.find(p => p.id === active)?.progress || freshProgress();
+    mission = null; stopClock(); showScreen("ready");
+    pendingProgress = null;
+    $("import-confirm").hidden = true;
+    $("reset-confirm").hidden = true;
+    $("transfer-status").textContent = "";
+    $("profile-status").textContent = "";
+    $("setup").hidden = false;
+    $("mission-label").textContent = "YOUR NEXT MISSION";
+    $("fact-detail").textContent = "Choose a fact below.";
+    setup(); updateStats();
+  }
+  on($("cloud-login"), "submit", async e => {
+    e.preventDefault();
+    if (cloudBusy || stale) return;
+    if (mission && !mission.finished) { $("cloud-status").textContent = "Finish the current mission before signing in."; return; }
+    cloudBusy = true; cloudControls();
+    try {
+      await cloud.signIn($("cloud-email").value.trim(), $("cloud-password").value);
+      teacher = await cloud.rpc("fact_pop_is_teacher");
+      const rows = await cloud.students();
+      save(); localRoster = roster; online = true;
+      setCloudRows(rows);
+      $("cloud-who").textContent = (teacher ? "Teacher: " : "Parent: ") + cloud.session.user.email;
+      $("cloud-local-picker").replaceChildren(...(teacher ? localRoster.profiles : []).map(p => {
+        const option = document.createElement("option"); option.value = p.id; option.textContent = p.progress.student || "Unnamed student"; return option;
+      }));
+      $("cloud-status").textContent = rows.length ? "Signed in. Online progress loaded." : teacher ? "Signed in. Add a student or copy a local profile online." : "Signed in. Your teacher needs to link your account to your child.";
+    } catch (error) { await cloud.signOut(); $("cloud-status").textContent = "Could not sign in: " + error.message; }
+    finally { $("cloud-password").value = ""; cloudBusy = false; cloudControls(); }
+  });
+  on($("cloud-signout"), "click", async () => {
+    if (cloudBusy) return;
+    cloudBusy = true; pause(); cloudControls();
+    if (!await cloudSaves.flush() && !window.confirm("Sign out and discard unsynced answers on this page? Cancel and download a CSV for each affected student first to keep them.")) { cloudBusy = false; cloudControls(); return; }
+    await cloud.signOut();
+    online = false; teacher = false; cloudBusy = false;
+    roster = localRoster; localRoster = null;
+    data = roster.profiles.find(p => p.id === roster.active).progress;
+    switchStudent(roster.active);
+    $("cloud-who").textContent = "";
+    $("cloud-local-picker").replaceChildren();
+    $("cloud-status").textContent = "Signed out. Back to this browser’s local profiles.";
+  });
+  on($("cloud-reload"), "click", async () => {
+    if (cloudBusy) return;
+    if (!await cloudSaves.flush() && !window.confirm("Reload the online copy and discard this page’s unsynced answers? Download a CSV backup first to keep them.")) return;
+    if (mission && !mission.finished && !window.confirm("End this mission and reload online progress?")) return;
+    cloudBusy = true; cloudControls();
+    try { setCloudRows(await cloud.students()); cloudStatus(); }
+    catch (error) { $("cloud-status").textContent = error.message; }
+    finally { cloudBusy = false; cloudControls(); }
+  });
+  async function addOnlineStudent(progress) {
+    if (!teacher || cloudBusy) return false;
+    cloudBusy = true; cloudControls();
+    try {
+      const id = crypto.randomUUID();
+      const row = await cloud.rpc("fact_pop_create_student", {p_id: id, p_nickname: progress.student || "Unnamed student", p_progress: progress});
+      cloudSaves.register(row);
+      cloudBusy = false;
+      return switchStudent(row.id, row.progress);
+    } catch (error) { $("cloud-status").textContent = "Could not add student. Reload online profiles before trying again: " + error.message; return false; }
+    finally { cloudBusy = false; cloudControls(); }
+  }
+  on($("cloud-migrate"), "click", async () => {
+    const profile = localRoster?.profiles.find(p => p.id === $("cloud-local-picker").value);
+    if (profile && window.confirm("Copy this student’s name and progress into your online classroom? The local copy is kept.")) await addOnlineStudent(structuredClone(profile.progress));
+  });
+  on($("cloud-link"), "click", async () => {
+    if (!teacher || !roster.active || cloudBusy) return;
+    const email = $("cloud-parent-email").value.trim();
+    if (!email || !window.confirm("Allow " + email + " to view and update " + (data.student || "this student") + "? They need a confirmed game account first.")) return;
+    try { await cloud.rpc("fact_pop_link_parent", {p_student_id: roster.active, p_email: email}); $("cloud-status").textContent = "Parent linked to this student."; }
+    catch (error) { $("cloud-status").textContent = error.message; }
+  });
+  on($("cloud-revoke"), "click", async () => {
+    if (!teacher || !roster.active || cloudBusy) return;
+    const email = $("cloud-parent-email").value.trim();
+    if (!email || !window.confirm("Remove " + email + "’s access to the selected student?")) return;
+    try { await cloud.rpc("fact_pop_unlink_parent_email", {p_student_id: roster.active, p_email: email}); $("cloud-status").textContent = "Parent access removed."; }
+    catch (error) { $("cloud-status").textContent = error.message; }
+  });
+  on(window, "beforeunload", e => {
+    if (online && cloudSaves.dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
   on(window, "storage", (e) => {
-    if (e.key === PROFILES_KEY || e.key === STORAGE_KEY || e.key === null) {
+    if (!online && (e.key === PROFILES_KEY || e.key === STORAGE_KEY || e.key === null)) {
       stale = true;
       warning(
         "Progress changed in another tab. Reload this page before playing again to keep your latest progress.",

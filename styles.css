@@ -1559,3 +1559,44 @@ footer {
 
 .cloud-panel { margin-top: 28px; }
 #cloud-status:empty { display: none; }
+
+/* Keep the practice switch at the top left, beside the existing navigation. */
+.brand-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.subject-switch {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper, #fff);
+  color: var(--purple);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.subject-switch:hover { background: #f1edff; }
+.operation-settings {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+.operation-settings label { font-weight: 700; }
+.operation-settings select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+@media (max-width: 430px) {
+  .subject-switch { font-size: 11px; padding: 6px 8px; }
+  .operation-settings { align-items: flex-start; flex-direction: column; }
+}

@@ -207,3 +207,43 @@ test('My facts counts fluent records and animates on entry, with independent stu
     assert.equal(get('fluency-progress').attributes['aria-valuenow'], '0');
   } finally { off(); }
 });
+
+test('subject switch preserves answers and settings, changes facts and restores direct addition page', async () => {
+  const stored = new Map();
+  globalThis.localStorage = {getItem: k => stored.get(k) || null, setItem: (k,v) => stored.set(k,v)};
+  globalThis.document = {...element(), createElement: element};
+  globalThis.window = {...element(), location: {search:'',href:'http://localhost/'}, history:{replaceState(a,b,url){window.location={search:url.search,href:url.href};}}};
+  const mount = () => {
+    const els=new Map();
+    const root={...element(),querySelector(id){if(!els.has(id))els.set(id,element());return els.get(id);}};
+    return {get:id=>root.querySelector('#'+id),off:mountGame(root)};
+  };
+  let ui=mount();
+  try {
+    await ui.get('start').fire('click');
+    let [a,b]=ui.get('equation').innerHTML.match(/\d+/g).map(Number);
+    ui.get('answer').value=String(a*b); ui.get('answer-form').fire('submit');
+    await ui.get('subject-switch').fire('click');
+    assert.match(window.location.search,/practice=addition/);
+    assert.equal(ui.get('secure-count').textContent,'0 / 126');
+    assert.equal(ui.get('setup').hidden,false);
+    assert.equal((ui.get('table-picker').innerHTML.match(/data-table=/g)||[]).length,9);
+    ui.get('operation-picker').value='−'; ui.get('operation-picker').fire('change');
+    await ui.get('start').fire('click');
+    assert.match(ui.get('equation').attributes['aria-label'],/minus/);
+    [a,b]=ui.get('equation').innerHTML.match(/\d+/g).map(Number);
+    ui.get('answer').value=String(a-b); ui.get('answer-form').fire('submit');
+    assert.match(ui.get('feedback').innerHTML,/Correct/);
+    await ui.get('subject-switch').fire('click');
+    assert.equal(ui.get('secure-count').textContent,'0 / 66');
+    assert.equal(ui.get('total-xp').textContent,'200');
+    await ui.get('subject-switch').fire('click');
+    ui.off(); ui=mount();
+    assert.equal(ui.get('operation-picker').value,'−');
+    assert.equal(ui.get('total-xp').textContent,'200');
+    const progress=JSON.parse(stored.get(PROFILES_KEY)).profiles[0].progress;
+    assert.equal(Object.keys(progress.facts).length,2);
+    assert.ok(Object.keys(progress.facts).some(k=>k.includes('x')));
+    assert.ok(Object.keys(progress.facts).some(k=>k.includes('-')));
+  } finally {ui.off();}
+});

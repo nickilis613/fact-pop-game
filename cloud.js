@@ -1,4 +1,4 @@
-import { parseProgress } from "./engine.js?v=daily-rounds-1";
+import { parseProgress } from "./engine.js?v=arithmetic-1";
 
 const USERNAME_DOMAIN = "parents.fact-pop.invalid";
 export function accountEmail(value) {

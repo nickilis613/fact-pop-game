@@ -1,17 +1,20 @@
-import { FACTS, parseProgress, freshProgress, status } from "./engine.js?v=daily-rounds-1";
+import { FACTS, ALL_FACTS, parseProgress, freshProgress, status } from "./engine.js?v=arithmetic-1";
 
 const columns = ["format", "student", "xp", "missions", "next_mission", "settings", "fact", "answer", "status", "attempts", "correct", "typed_attempts", "typed_correct", "last_seen", "last_correct", "recent"];
 const dailyColumns = [...columns, "daily"];
+const arithmeticColumns = [...dailyColumns, "addition_settings"];
 const cell = (value) => '"' + String(value).replaceAll('"', '""') + '"';
 
 export function exportProgressCSV(progress) {
   const p = parseProgress(JSON.stringify(progress));
-  return "\uFEFF" + [dailyColumns, ...FACTS.map(f => {
+  const arithmetic = !!p.additionSettings || Object.keys(p.facts).some(key => !key.includes("x"));
+  const facts = arithmetic ? ALL_FACTS : FACTS;
+  return "\uFEFF" + [arithmetic ? arithmeticColumns : dailyColumns, ...facts.map(f => {
     const r = p.facts[f.key];
-    return ["fact-pop-v2", "'" + p.student, p.xp, p.missions, p.nextMission,
+    return [arithmetic ? "fact-pop-v3" : "fact-pop-v2", "'" + p.student, p.xp, p.missions, p.nextMission,
       JSON.stringify(p.settings), f.key, f.answer, status(r), r?.attempts || 0,
       r?.correct || 0, r?.typed || 0, r?.typedCorrect || 0,
-      r?.lastSeen || 0, r?.lastCorrect || false, JSON.stringify(r?.recent || []), JSON.stringify(p.daily)];
+      r?.lastSeen || 0, r?.lastCorrect || false, JSON.stringify(r?.recent || []), JSON.stringify(p.daily), ...(arithmetic ? [JSON.stringify(p.additionSettings || null)] : [])];
   })].map(row => row.map(cell).join(",")).join("\r\n");
 }
 
@@ -47,24 +50,27 @@ function rows(text) {
 export function importProgressCSV(text) {
   if (typeof text !== "string" || text.length > 1_000_000) throw Error("Choose a Fact Pop CSV smaller than 1 MB.");
   const [header, ...records] = rows(text);
-  const hasDaily = JSON.stringify(header) === JSON.stringify(dailyColumns);
+  const arithmetic = JSON.stringify(header) === JSON.stringify(arithmeticColumns);
+  const facts = arithmetic ? ALL_FACTS : FACTS;
+  const hasDaily = arithmetic || JSON.stringify(header) === JSON.stringify(dailyColumns);
   if (!hasDaily && JSON.stringify(header) !== JSON.stringify(columns))
     throw Error("This is not a restorable Fact Pop CSV. Older report-only exports cannot be restored; download a new progress CSV from Fact Pop.");
-  if (records.length !== FACTS.length) throw Error("The CSV must contain all 66 facts.");
+  if (records.length !== facts.length) throw Error(`The CSV must contain all ${facts.length} facts.`);
   const p = freshProgress(), seen = new Set();
   const number = value => {
     if (!/^\d+(\.\d+)?$/.test(value) || !Number.isFinite(Number(value))) throw Error("Invalid number in CSV.");
     return Number(value);
   };
   const first = records[0];
-  if (first[0] !== (hasDaily ? "fact-pop-v2" : "fact-pop-v1") || !first[1].startsWith("'")) throw Error("Unsupported progress format.");
+  if (first[0] !== (arithmetic ? "fact-pop-v3" : hasDaily ? "fact-pop-v2" : "fact-pop-v1") || !first[1].startsWith("'")) throw Error("Unsupported progress format.");
   p.student = first[1].slice(1);
   [p.xp, p.missions, p.nextMission] = first.slice(2, 5).map(number);
   p.settings = JSON.parse(first[5]);
   if (hasDaily) p.daily = JSON.parse(first[16]);
+  if (arithmetic && first[17] !== "null") p.additionSettings = JSON.parse(first[17]);
   for (const row of records) {
-    if (row.length !== header.length || row.slice(0, 6).some((v, i) => v !== first[i]) || (hasDaily && row[16] !== first[16])) throw Error("Mixed students or inconsistent progress in CSV.");
-    const f = FACTS.find(f => f.key === row[6]);
+    if (row.length !== header.length || row.slice(0, 6).some((v, i) => v !== first[i]) || (hasDaily && row[16] !== first[16]) || (arithmetic && row[17] !== first[17])) throw Error("Mixed students or inconsistent progress in CSV.");
+    const f = facts.find(f => f.key === row[6]);
     if (!f || seen.has(f.key) || number(row[7]) !== f.answer) throw Error("Invalid or duplicate fact in CSV.");
     seen.add(f.key);
     if (!["true", "false"].includes(row[14])) throw Error("Invalid fact result.");

@@ -1,6 +1,6 @@
 # Fact Pop! 0.2
 
-A local-first multiplication game, rebuilt from [nickilis613/multiplication-facts-game](https://github.com/nickilis613/multiplication-facts-game). The static edition and React app share one interface and learning engine.
+A local-first multiplication, addition, and subtraction game, rebuilt from [nickilis613/multiplication-facts-game](https://github.com/nickilis613/multiplication-facts-game). The static edition and React app share one interface and learning engine.
 
 ## Play locally
 
@@ -11,6 +11,26 @@ node serve.mjs
 ```
 
 Open **http://127.0.0.1:4173/**. No dependency installation is needed for this edition. Keep the server running while playing. Use a server rather than opening index.html directly because the game uses JavaScript modules.
+
+## Addition and subtraction
+
+Use the button above the logo in the top left to switch between multiplication
+and addition/subtraction. The alternate page can be opened directly at
+`/?practice=addition` (append `?practice=addition` to the deployed site URL).
+
+The new page uses addends **1–9 only**, with sums up to **18 (9 + 9)**.
+There are **45 unique addition facts** (reversed pairs share a record) and
+**81 related subtraction facts**, each tracked independently: **126 total**.
+Subtraction uses inverse facts such as `18 − 9 = 9`; it does not introduce zero
+or negative answers. Select addition only, subtraction only, or a mixed round,
+and choose which addends to practice.
+
+Profiles, XP, and daily goals carry across both pages. Fact evidence is separate
+for each operation, and each page remembers its own practice settings. Switching
+pages ends the current round while retaining recorded answers. Local saves,
+online progress, and new CSV backups preserve all operations. CSV imports still
+accept the previous multiplication-only formats. New arithmetic backups use
+`fact-pop-v3` and require this updated app to restore.
 
 ## The game
 

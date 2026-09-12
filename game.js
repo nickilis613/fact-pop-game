@@ -1,10 +1,14 @@
-import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=daily-rounds-1";
+import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=arithmetic-1";
 import { cloudConfig } from "./cloud-config.js";
-import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=daily-rounds-1";
-import { exportProgressCSV, importProgressCSV } from "./progress-csv.js?v=daily-rounds-1";
+import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=arithmetic-1";
+import { exportProgressCSV, importProgressCSV } from "./progress-csv.js?v=arithmetic-1";
 import {
-  FACTS,
-  TABLES,
+  FACTS as MULTIPLICATION_FACTS,
+  SUM_FACTS,
+  ADDENDS,
+  freshAdditionSettings,
+  operationSymbol,
+  TABLES as MULTIPLICATION_TABLES,
   ROUND_LENGTH,
   DAILY_ROUND_GOAL,
   dailyProgress,
@@ -14,9 +18,14 @@ import {
   status,
   hint,
   Mission,
-} from "./engine.js?v=daily-rounds-1";
+} from "./engine.js?v=arithmetic-1";
 
 export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } = {}) {
+  let subject = new URLSearchParams(window.location?.search || "").get("practice") === "addition" ? "addition" : "multiplication";
+  let FACTS = subject === "addition" ? SUM_FACTS : MULTIPLICATION_FACTS;
+  let TABLES = subject === "addition" ? ADDENDS : MULTIPLICATION_TABLES;
+  const practiceSettings = () => subject === "addition" ? (data.additionSettings ||= freshAdditionSettings()) : data.settings;
+  const starterTables = () => subject === "addition" ? [1, 2, 5] : [2, 5, 10];
   const $ = (id) => root.querySelector("#" + id);
   const listeners = [];
   const on = (el, event, fn) => {
@@ -59,7 +68,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     }
   }
   function sound(correct) {
-    if (!data.settings.sound) return;
+    if (!practiceSettings().sound) return;
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       soundContext ||= new AudioContext();
@@ -115,23 +124,11 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       `Level ${level} · ${level < 4 ? "Fact explorer" : level < 10 ? "Pattern finder" : "Recall adventurer"}`;
     updateDailyStats();
     const secure = FACTS.filter((f) => status(data.facts[f.key]) === "secure").length;
-    $("secure-count").textContent = `${secure} / 66`;
-    const featured = [
-      [2, 2],
-      [2, 5],
-      [2, 10],
-      [5, 5],
-      [5, 10],
-      [6, 7],
-      [7, 8],
-      [10, 10],
-    ];
-    $("collection-preview").innerHTML = featured
-      .map(
-        ([a, b]) =>
-          `<div class="${status(data.facts[`${a}x${b}`])}" title="${a} × ${b}">${a}×${b}</div>`,
-      )
-      .join("");
+    $("secure-count").textContent = `${secure} / ${FACTS.length}`;
+    const featured = subject === "addition" ? [SUM_FACTS[0], SUM_FACTS[4], SUM_FACTS[12], SUM_FACTS[25], SUM_FACTS[44], SUM_FACTS[53], SUM_FACTS[80], SUM_FACTS[125]] :
+      [[2, 2], [2, 5], [2, 10], [5, 5], [5, 10], [6, 7], [7, 8], [10, 10]].map(([a,b]) => MULTIPLICATION_FACTS.find(f => f.a === a && f.b === b));
+    $("collection-preview").innerHTML = featured.map(f =>
+      `<div class="${status(data.facts[f.key])}" title="${f.a} ${operationSymbol(f)} ${f.b}">${f.a}${operationSymbol(f)}${f.b}</div>`).join("");
     $("lifetime-summary").textContent =
       `${data.missions} rounds played · ${Object.values(data.facts).reduce((n, r) => n + r.attempts, 0)} first attempts · ${secure} facts feeling fluent.`;
     if (page === "facts") renderFacts(animateFluency);
@@ -159,28 +156,85 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("daily-best").textContent = daily.best;
     $("result-daily").textContent = `Today: ${daily.rounds} ${daily.rounds === 1 ? "round" : "rounds"} · ${daily.xp.toLocaleString()} XP · best streak ${daily.best}`;
   }
+  function renderSubject() {
+    const addition = subject === "addition";
+    $("subject-switch").textContent = addition ? "× Multiplication →" : "＋ / − Addition & subtraction →";
+    $("subject-switch").setAttribute("aria-label", addition ? "Switch to multiplication practice" : "Switch to addition and subtraction practice");
+    $("brand-mark").textContent = addition ? "+" : "×";
+    $("play-page").setAttribute("aria-label", addition ? "Addition and subtraction game" : "Multiplication game");
+    if (page === "play") $("page-title").textContent = addition ? "Addition & subtraction practice" : "Multiplication practice";
+    document.title = addition ? "Fact Pop! — Addition & subtraction practice" : "Fact Pop! — Multiplication practice";
+    $("fact-range").textContent = addition ? "1–9 addends · sums up to 18" : "2–12 × tables";
+    $("fact-bubbles").innerHTML = addition
+      ? '<span>9</span><b>+</b><span>9</span><b>=</b><span class="answer-bubble">18<span class="spark">✦</span></span>'
+      : '<span>6</span><b>×</b><span>7</span><b>=</b><span class="answer-bubble">42<span class="spark">✦</span></span>';
+    $("table-heading").textContent = addition ? "Choose your addends" : "Choose your tables";
+    $("table-picker").setAttribute("aria-label", addition ? "Addends" : "Times tables");
+    $("table-note").textContent = addition ? "Choose numbers from 1–9. Subtraction uses the related sums: 9 + 9 = 18 and 18 − 9 = 9." : "Start small: 2s, 5s, and 10s. Add more whenever you’re ready.";
+    $("operation-settings").hidden = !addition;
+    if (addition) $("operation-picker").value = practiceSettings().operation;
+    $("fact-explanation").textContent = addition
+      ? "45 addition facts and 81 related subtraction facts. Reversed addition pairs share a record; each subtraction has its own progress. Tap a fact to explore."
+      : "Tap a fact to see your progress. Matching pairs share one record: 6 × 7 is the same fact as 7 × 6.";
+    $("recall-guide").textContent = `Start with Recall and a small set of ${addition ? "addends" : "tables"}. Choose mode offers answer recognition; typed modes practice retrieving the answer without choices.`;
+  }
+  async function switchSubject(nextSubject) {
+    if (stale || cloudBusy || nextSubject === subject) return;
+    if (online) {
+      cloudBusy = true; pause(); cloudControls();
+      const saved = await cloudSaves.flush();
+      cloudBusy = false; cloudControls();
+      if (!saved) { cloudStatus(); return; }
+    }
+    save();
+    stopClock();
+    mission = null;
+    subject = nextSubject;
+    FACTS = subject === "addition" ? SUM_FACTS : MULTIPLICATION_FACTS;
+    TABLES = subject === "addition" ? ADDENDS : MULTIPLICATION_TABLES;
+    showScreen("ready");
+    $("setup").hidden = false;
+    $("mission-label").textContent = "YOUR NEXT ROUND";
+    $("arena-status").textContent = "Ready";
+    $("fact-detail").textContent = "Choose a fact below.";
+    setup();
+    navigate("play");
+    if (window.location) {
+      const url = new URL(window.location.href);
+      if (subject === "addition") url.searchParams.set("practice", "addition");
+      else url.searchParams.delete("practice");
+      window.history.replaceState(null, "", url);
+    }
+  }
+  on($("subject-switch"), "click", () => switchSubject(subject === "addition" ? "multiplication" : "addition"));
+  on($("operation-picker"), "change", () => {
+    if (stale || cloudBusy || (mission && !mission.finished)) return;
+    practiceSettings().operation = $("operation-picker").value;
+    save(); setup();
+  });
   function setup() {
+    renderSubject();
     renderStudents();
     cloudControls();
     $("student-name").value = data.student;
     $("active-student").textContent = `Current student: ${data.student || "Unnamed student"}`;
     root.querySelectorAll("[data-mode]").forEach((b) => {
-      const selected = b.dataset.mode === data.settings.mode;
+      const selected = b.dataset.mode === practiceSettings().mode;
       b.classList.toggle("selected", selected);
       b.setAttribute("aria-pressed", String(selected));
     });
-    $("sprint-settings").hidden = data.settings.mode !== "sprint";
-    $("speed-goal").value = String(data.settings.goal);
+    $("sprint-settings").hidden = practiceSettings().mode !== "sprint";
+    $("speed-goal").value = String(practiceSettings().goal);
     $("table-picker").innerHTML = TABLES.map(
       (t) =>
-        `<button type="button" data-table="${t}" aria-label="${t} times table" aria-pressed="${data.settings.tables.includes(t)}">${t}</button>`,
+        `<button type="button" data-table="${t}" aria-label="${subject === "addition" ? `Facts with ${t}` : `${t} times table`}" aria-pressed="${practiceSettings().tables.includes(t)}">${t}</button>`,
     ).join("");
     $("all-tables").textContent =
-      data.settings.tables.length === 11 ? "Use starter set" : "Select all";
+      practiceSettings().tables.length === TABLES.length ? "Use starter set" : "Select all";
     $("round-label").textContent =
-      data.settings.mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
-    $("sound").setAttribute("aria-pressed", String(data.settings.sound));
-    $("sound").innerHTML = `♪ <span>Sound ${data.settings.sound ? "on" : "off"}</span>`;
+      practiceSettings().mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
+    $("sound").setAttribute("aria-pressed", String(practiceSettings().sound));
+    $("sound").innerHTML = `♪ <span>Sound ${practiceSettings().sound ? "on" : "off"}</span>`;
   }
   function focusAnswer() {
     (mission?.stage === "feedback"
@@ -206,11 +260,11 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       finally { cloudBusy = false; cloudControls(); }
     }
     stopClock();
-    mission = new Mission(data);
+    mission = new Mission(data, { subject });
     save();
     $("setup").hidden = true;
     $("mission-label").textContent =
-      `${data.settings.mode === "sprint" ? "SPRINT" : data.settings.mode === "choice" ? "CHOOSE" : "RECALL"} ROUND`;
+      `${practiceSettings().mode === "sprint" ? "SPRINT" : practiceSettings().mode === "choice" ? "CHOOSE" : "RECALL"} ROUND`;
     $("arena-status").textContent = "Practicing";
     showScreen("question");
     renderQuestion();
@@ -232,10 +286,10 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("question-kind").textContent = q.review
       ? "ANOTHER CHANCE TO MAKE IT STICK"
       : mission.settings.mode === "choice"
-        ? "CHOOSE THE PRODUCT"
+        ? "CHOOSE THE ANSWER"
         : "RECALL PRACTICE";
-    $("equation").innerHTML = `${q.a} <em>×</em> ${q.b} <small>=</small> <b>?</b>`;
-    $("equation").setAttribute("aria-label", `${q.a} times ${q.b} equals what?`);
+    $("equation").innerHTML = `${q.a} <em>${operationSymbol(q)}</em> ${q.b} <small>=</small> <b>?</b>`;
+    $("equation").setAttribute("aria-label", `${q.a} ${q.operation === "+" ? "plus" : q.operation === "−" ? "minus" : "times"} ${q.b} equals what?`);
     $("answer").value = "";
     $("answer").disabled = false;
     $("check").disabled = true;
@@ -271,11 +325,11 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       if (result.correct) {
         $("feedback").className = "feedback correct";
         $("feedback").innerHTML =
-          `<strong>You’ve got it: ${q.a} × ${q.b} = ${q.answer}.</strong>`;
+          `<strong>You’ve got it: ${q.a} ${operationSymbol(q)} ${q.b} = ${q.answer}.</strong>`;
         showNext();
       } else {
         $("feedback").innerHTML =
-          `<strong>Type ${q.answer} to practice the correct answer.</strong><span class="hint">${hint(q.a, q.b)}</span>`;
+          `<strong>Type ${q.answer} to practice the correct answer.</strong><span class="hint">${hint(q.a, q.b, operationSymbol(q))}</span>`;
         $("answer").value = "";
         $("check").disabled = true;
         $("answer").focus();
@@ -292,7 +346,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("feedback").className = `feedback ${result.correct ? "correct" : "wrong"}`;
     if (result.correct) {
       $("feedback").innerHTML =
-        `<strong>${result.streakBonus ? "Streak bonus!" : mission.settings.mode === "choice" ? "Correct!" : "Correct!"} +${result.earned} XP</strong><span class="hint">${q.a} × ${q.b} = ${q.answer}${result.speed ? " · Speed bonus earned" : ""}</span>`;
+        `<strong>${result.streakBonus ? "Streak bonus!" : mission.settings.mode === "choice" ? "Correct!" : "Correct!"} +${result.earned} XP</strong><span class="hint">${q.a} ${operationSymbol(q)} ${q.b} = ${q.answer}${result.speed ? " · Speed bonus earned" : ""}</span>`;
       $("equation").classList.remove("pop");
       void $("equation").offsetWidth;
       $("equation").classList.add("pop");
@@ -301,7 +355,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       $("pace-row").hidden = true;
       $("question-kind").textContent = "LET’S LEARN THIS ONE";
       $("feedback").innerHTML =
-        `<strong>${q.a} × ${q.b} = ${q.answer}. Let’s try that together.</strong><span class="hint">${hint(q.a, q.b)} Type ${q.answer} below the question. +20 XP for trying.</span>`;
+        `<strong>${q.a} ${operationSymbol(q)} ${q.b} = ${q.answer}. Let’s try that together.</strong><span class="hint">${hint(q.a, q.b, operationSymbol(q))} Type ${q.answer} below the question. +20 XP for trying.</span>`;
       $("answer-form").hidden = false;
       $("choices").hidden = true;
       $("answer").value = "";
@@ -355,7 +409,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     const missed = [...new Map(h.filter((r) => !r.correct).map((r) => [r.key, r])).values()];
     $("review-facts").innerHTML = missed.length
       ? "<strong>Facts to review:</strong>" +
-        missed.map((r) => `<span>${r.a} × ${r.b} = ${r.a * r.b}</span>`).join("")
+        missed.map((r) => `<span>${r.a} ${operationSymbol(r)} ${r.b} = ${r.answer}</span>`).join("")
       : "";
     $("round-label").textContent = `${h.length} facts practiced`;
     $("arena-status").textContent = completed ? "Round complete" : "Round ended";
@@ -389,7 +443,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     }
     $("fact-grid").innerHTML = FACTS.map((f) => {
       const s = status(data.facts[f.key]);
-      return `<button class="fact-cell ${s}" data-fact="${f.key}" aria-label="${f.a} times ${f.b}, ${s === "secure" ? "feeling fluent" : s === "learning" ? "practicing" : "new"}">${f.a} × ${f.b}<span>${s === "secure" ? "✓ Fluent" : s === "learning" ? "Practicing" : "New"}</span></button>`;
+      return `<button class="fact-cell ${s}" data-fact="${f.key}" aria-label="${f.a} ${operationSymbol(f)} ${f.b}, ${s === "secure" ? "feeling fluent" : s === "learning" ? "practicing" : "new"}">${f.a} ${operationSymbol(f)} ${f.b}<span>${s === "secure" ? "✓ Fluent" : s === "learning" ? "Practicing" : "New"}</span></button>`;
     }).join("");
   }
   function navigate(destination) {
@@ -410,7 +464,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
         ? "Fact progress"
         : page === "guide"
           ? "How to play"
-          : "Multiplication practice";
+          : subject === "addition" ? "Addition & subtraction practice" : "Multiplication practice";
     updateStats(enteringFacts);
     $("main").focus({ preventScroll: true });
   }
@@ -419,19 +473,19 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     if (!button || !root.contains(button) || button.disabled || cloudBusy) return;
     if (button.dataset.page) navigate(button.dataset.page);
     if (button.dataset.mode && (!mission || mission.finished)) {
-      data.settings.mode = button.dataset.mode;
+      practiceSettings().mode = button.dataset.mode;
       setup();
       save();
     }
     if (button.dataset.table && (!mission || mission.finished)) {
       const t = Number(button.dataset.table),
-        i = data.settings.tables.indexOf(t);
-      if (i >= 0 && data.settings.tables.length === 1) {
-        $("table-note").textContent = "Keep at least one table selected. You can add any others.";
+        i = practiceSettings().tables.indexOf(t);
+      if (i >= 0 && practiceSettings().tables.length === 1) {
+        $("table-note").textContent = "Keep at least one number selected. You can add any others.";
         return;
       }
-      if (i >= 0) data.settings.tables.splice(i, 1);
-      else data.settings.tables.push(t);
+      if (i >= 0) practiceSettings().tables.splice(i, 1);
+      else practiceSettings().tables.push(t);
       setup();
       save();
       $("table-picker").querySelector(`[data-table="${t}"]`).focus();
@@ -441,7 +495,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       const f = FACTS.find((f) => f.key === button.dataset.fact),
         r = data.facts[f.key];
       $("fact-detail").textContent =
-        `${f.a} × ${f.b} = ${f.answer}. ${r ? `${r.correct}/${r.attempts} first attempts correct; ${r.typedCorrect}/${r.typed} typed attempts correct. ${status(r) === "secure" ? "Feeling fluent — keep revisiting it." : "Keep practicing for confident recall."}` : "A new fact waiting to be explored."}`;
+        `${f.a} ${operationSymbol(f)} ${f.b} = ${f.answer}. ${r ? `${r.correct}/${r.attempts} first attempts correct; ${r.typedCorrect}/${r.typed} typed attempts correct. ${status(r) === "secure" ? "Feeling fluent — keep revisiting it." : "Keep practicing for confident recall."}` : "A new fact waiting to be explored."}`;
     }
   });
   on($("answer"), "input", () => {
@@ -476,18 +530,18 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   });
   on($("end"), "click", finish);
   on($("sound"), "click", () => {
-    data.settings.sound = !data.settings.sound;
-    $("sound").setAttribute("aria-pressed", String(data.settings.sound));
-    $("sound").innerHTML = `♪ <span>Sound ${data.settings.sound ? "on" : "off"}</span>`;
+    practiceSettings().sound = !practiceSettings().sound;
+    $("sound").setAttribute("aria-pressed", String(practiceSettings().sound));
+    $("sound").innerHTML = `♪ <span>Sound ${practiceSettings().sound ? "on" : "off"}</span>`;
     save();
-    if (data.settings.sound) sound(true);
+    if (practiceSettings().sound) sound(true);
   });
   on($("speed-goal"), "change", () => {
-    data.settings.goal = Number($("speed-goal").value);
+    practiceSettings().goal = Number($("speed-goal").value);
     save();
   });
   on($("all-tables"), "click", () => {
-    data.settings.tables = data.settings.tables.length === 11 ? [2, 5, 10] : [...TABLES];
+    practiceSettings().tables = practiceSettings().tables.length === TABLES.length ? starterTables() : [...TABLES];
     setup();
     save();
   });
@@ -658,7 +712,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("cloud-teacher").hidden = !online || !teacher;
     $("add-student-form").hidden = online && !teacher;
     for (const id of ["student-name", "new-student", "reset", "reset-yes", "import-file", "import-yes", "import-backup"]) $(id).disabled = cloudBusy || (online && !teacher);
-    for (const id of ["start", "replay", "student-picker", "add-student", "cloud-signout", "cloud-reload", "cloud-migrate", "cloud-link", "cloud-revoke", "sound", "speed-goal", "all-tables", "check", "next", "resume", "end"]) $(id).disabled = cloudBusy || (online && !roster.profiles.length && ["start", "replay"].includes(id));
+    for (const id of ["subject-switch", "operation-picker", "start", "replay", "student-picker", "add-student", "cloud-signout", "cloud-reload", "cloud-migrate", "cloud-link", "cloud-revoke", "sound", "speed-goal", "all-tables", "check", "next", "resume", "end"]) $(id).disabled = cloudBusy || (online && !roster.profiles.length && ["start", "replay"].includes(id));
     $("cloud-signin").disabled = cloudBusy;
     $("check").disabled = cloudBusy || !$("answer").value;
     $("profile-location").textContent = online

@@ -6,6 +6,15 @@ export const factKey = (a, b) => [Math.min(a, b), Math.max(a, b)].join("x");
 export const FACTS = TABLES.flatMap((a) =>
   TABLES.filter((b) => b >= a).map((b) => ({ a, b, key: factKey(a, b), answer: a * b })),
 );
+export const ADDENDS = Array.from({ length: 9 }, (_, i) => i + 1);
+export const ADDITION_FACTS = ADDENDS.flatMap(a => ADDENDS.filter(b => b >= a)
+  .map(b => ({ a, b, key: `${a}+${b}`, answer: a + b, operation: "+" })));
+export const SUBTRACTION_FACTS = ADDENDS.flatMap(a => ADDENDS.map(b =>
+  ({ a: a + b, b, key: `${a + b}-${b}`, answer: a, operation: "−" })));
+export const SUM_FACTS = [...ADDITION_FACTS, ...SUBTRACTION_FACTS];
+export const ALL_FACTS = [...FACTS, ...SUM_FACTS];
+export const freshAdditionSettings = () => ({ mode: "recall", tables: [1, 2, 5], goal: 5000, sound: false, operation: "mixed" });
+export const operationSymbol = fact => fact.operation || "×";
 export const freshProgress = () => ({
   version: 2,
   student: "",
@@ -61,7 +70,7 @@ export function parseProgress(raw) {
     ) throw Error("Invalid daily progress");
     result.daily = { date: d.date, rounds: d.rounds, xp: d.xp, streak: d.streak, best: d.best };
   }
-  for (const f of FACTS) {
+  for (const f of ALL_FACTS) {
     const r = p.facts[f.key];
     if (!r) continue;
     if (
@@ -116,6 +125,14 @@ export function parseProgress(raw) {
       goal: s.goal,
       sound: s.sound === true,
     };
+  if (p.additionSettings !== undefined) {
+    const a = p.additionSettings;
+    if (!a || !["recall", "sprint", "choice"].includes(a.mode) ||
+        !Array.isArray(a.tables) || !a.tables.length || !a.tables.every(t => ADDENDS.includes(t)) ||
+        ![3000, 5000, 8000].includes(a.goal) || !["mixed", "+", "−"].includes(a.operation))
+      throw Error("Invalid addition practice settings");
+    result.additionSettings = { mode: a.mode, tables: [...new Set(a.tables)], goal: a.goal, sound: a.sound === true, operation: a.operation };
+  }
   return result;
 }
 export function status(record) {
@@ -136,18 +153,25 @@ export function shuffle(items, rng = Math.random) {
   }
   return result;
 }
-export function makeOptions(a, b, rng = Math.random) {
-  const answer = a * b;
+export function makeOptions(a, b, rng = Math.random, operation = "×") {
+  const answer = operation === "+" ? a + b : operation === "−" ? a - b : a * b;
   const distractors = [
     ...new Set(
       [answer - a, answer + a, answer - b, answer + b, answer + 1, answer + 2, answer + 3].filter(
-        (n) => n > 0 && n !== answer,
+        (n) => (operation === "×" ? n > 0 : n >= 0) && n !== answer,
       ),
     ),
   ];
   return shuffle([answer, ...shuffle(distractors, rng).slice(0, 3)], rng);
 }
-export function hint(a, b) {
+export function hint(a, b, operation = "×") {
+  if (operation === "−") return `Think of the missing addend: ${b} + ${a - b} = ${a}, so ${a} − ${b} = ${a - b}.`;
+  if (operation === "+") {
+    if (a === 0 || b === 0) return `Adding zero keeps the number the same: ${a} + ${b} = ${a + b}.`;
+    if (a === b) return `Double ${a}: ${a} + ${a} = ${a + b}.`;
+    if (a + b >= 10) return `Make ten: ${a} + ${10 - a} = 10, then add ${b - (10 - a)} to make ${a + b}.`;
+    return `Start at ${Math.max(a, b)} and count on ${Math.min(a, b)} to reach ${a + b}.`;
+  }
   if (a === 2) return `Double ${b}: ${b} + ${b} = ${a * b}.`;
   if (a === 10) return `Ten groups of ${b} make ${a * b}.`;
   if (a === 5) return `Half of 10 × ${b}: ${10 * b} ÷ 2 = ${a * b}.`;
@@ -155,13 +179,15 @@ export function hint(a, b) {
   return `Use ${a - 1} × ${b}, then add one more ${b}: ${(a - 1) * b} + ${b} = ${a * b}.`;
 }
 export class Mission {
-  constructor(progress, { rng = Math.random, clock = () => performance.now(), date = () => new Date() } = {}) {
+  constructor(progress, { rng = Math.random, clock = () => performance.now(), date = () => new Date(), subject = "multiplication" } = {}) {
     this.progress = progress;
     this.rng = rng;
     this.clock = clock;
     this.date = date;
     this.dailyRoundCounted = false;
-    this.settings = { ...progress.settings, tables: [...progress.settings.tables] };
+    this.subject = subject;
+    const settings = subject === "addition" ? (progress.additionSettings ||= freshAdditionSettings()) : progress.settings;
+    this.settings = { ...settings, tables: [...settings.tables] };
     this.id = ++progress.nextMission;
     this.history = [];
     this.queue = [];
@@ -170,8 +196,9 @@ export class Mission {
     this.best = 0;
     this.stage = "ready";
     this.finished = false;
-    this.pool = FACTS.filter(
-      (f) => this.settings.tables.includes(f.a) || this.settings.tables.includes(f.b),
+    this.pool = (subject === "addition" ? SUM_FACTS : FACTS).filter(
+      (f) => (subject !== "addition" || this.settings.operation === "mixed" || f.operation === this.settings.operation) &&
+        (this.settings.tables.includes(f.operation === "−" ? f.answer : f.a) || this.settings.tables.includes(f.b)),
     );
     this.next();
   }
@@ -209,9 +236,9 @@ export class Mission {
       }
     }
     let { a, b } = f;
-    if (!this.settings.tables.includes(a) || (this.settings.tables.includes(b) && this.rng() > 0.5))
+    if (f.operation !== "−" && (!this.settings.tables.includes(a) || (this.settings.tables.includes(b) && this.rng() > 0.5)))
       [a, b] = [b, a];
-    this.question = { ...f, a, b, options: makeOptions(a, b, this.rng), review };
+    this.question = { ...f, a, b, options: makeOptions(a, b, this.rng, operationSymbol(f)), review };
     this.stage = "answer";
     this.started = this.clock();
     this.elapsed = 0;
@@ -280,6 +307,8 @@ export class Mission {
       key: q.key,
       a: q.a,
       b: q.b,
+      operation: operationSymbol(q),
+      answer: q.answer,
       correct,
       ms: this.elapsed,
       earned,

@@ -6,6 +6,7 @@ for (const file of [
   "index.html",
   "game-view.js",
   "game.js",
+  "boss.js",
   "engine.js",
   "progress-csv.js",
   "profiles.js",

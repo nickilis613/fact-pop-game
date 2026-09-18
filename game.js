@@ -1,3 +1,4 @@
+import { mountBoss } from './boss.js';
 import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=arithmetic-1";
 import { cloudConfig } from "./cloud-config.js";
 import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=arithmetic-1";
@@ -52,6 +53,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       "Saved profiles could not be loaded. Existing data has not been overwritten. Reload before continuing; do not clear browser storage.",
     );
   }
+  const bossUI = mountBoss(root, () => ({ data, facts: FACTS, settings: practiceSettings(), rounds: dailyProgress(data).rounds, busy: stale || cloudBusy || (online && !roster.active) || Boolean(mission && !mission.finished) }));
   function warning(text) {
     $("storage-warning").hidden = false;
     $("storage-warning").textContent = text;
@@ -135,6 +137,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   }
   let displayedDate = localDateKey();
   function updateDailyStats() {
+    bossUI.update();
     const daily = dailyProgress(data);
     displayedDate = daily.date;
     $("daily-rounds").textContent = `${daily.rounds} / ${DAILY_ROUND_GOAL}`;
@@ -146,7 +149,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     });
     const remaining = Math.max(0, DAILY_ROUND_GOAL - daily.rounds);
     const message = !remaining
-      ? "Daily goal reached! Extra rounds are welcome."
+      ? "Daily goal reached! Your round 4 boss battle is ready."
       : daily.rounds === 0
         ? "Let’s play your first round."
         : `${remaining} more ${remaining === 1 ? "round" : "rounds"} to your daily goal.`;
@@ -158,7 +161,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   }
   function renderSubject() {
     const addition = subject === "addition";
-    $("subject-switch").textContent = addition ? "× Multiplication →" : "＋ / − Addition & subtraction →";
+    $("subject-switch").textContent = addition ? "Switch to ×" : "Switch to ＋ / −";
     $("subject-switch").setAttribute("aria-label", addition ? "Switch to multiplication practice" : "Switch to addition and subtraction practice");
     $("brand-mark").textContent = addition ? "+" : "×";
     $("play-page").setAttribute("aria-label", addition ? "Addition and subtraction game" : "Multiplication game");
@@ -213,6 +216,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     save(); setup();
   });
   function setup() {
+    bossUI.update();
     renderSubject();
     renderStudents();
     cloudControls();
@@ -233,6 +237,9 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       practiceSettings().tables.length === TABLES.length ? "Use starter set" : "Select all";
     $("round-label").textContent =
       practiceSettings().mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
+    $("fact-range").textContent = subject === "addition"
+      ? `${practiceSettings().tables.join(", ")} addends`
+      : `Tables: ${practiceSettings().tables.join(", ")}`;
     $("sound").setAttribute("aria-pressed", String(practiceSettings().sound));
     $("sound").innerHTML = `♪ <span>Sound ${practiceSettings().sound ? "on" : "off"}</span>`;
   }
@@ -463,7 +470,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       page === "facts"
         ? "Fact progress"
         : page === "guide"
-          ? "How to play"
+          ? "CSV backup"
           : subject === "addition" ? "Addition & subtraction practice" : "Multiplication practice";
     updateStats(enteringFacts);
     $("main").focus({ preventScroll: true });
@@ -515,6 +522,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     mission = null;
     showScreen("ready");
     $("setup").hidden = false;
+    $("setup").open = true;
     $("mission-label").textContent = "YOUR NEXT ROUND";
     setup();
     updateStats();
@@ -828,6 +836,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   if (stale) root.querySelectorAll("button, input, select").forEach(el => { el.disabled = true; });
   return () => {
     stopClock();
+    bossUI.destroy();
     fluencyAnimation?.cancel();
     clearInterval(dailyRefresh);
     listeners.forEach((off) => off());

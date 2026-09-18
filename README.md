@@ -34,6 +34,21 @@ accept the previous multiplication-only formats. New arithmetic backups use
 
 ## The game
 
+### Local boss-round prototype
+
+After three completed daily rounds, **Round 4: battle the boss** appears in the
+results. The sidebar also offers **Enter the battle**, plus **Playtest a boss**
+to bypass the daily requirement and select any opponent immediately.
+
+Bosses follow the active subject's fluent-fact percentage: Slime (0–24%, 60 HP),
+Bat (25–49%, 80 HP), Ogre (50–74%, 100 HP), Dragon (75–100%, 120 HP).
+Each correct answer deals 20 damage. Mistakes show a hint; a correct guided
+retry deals 10 damage. There are no timers or lost lives. The battle uses the
+selected tables/addends and operations. This experimental bonus does not alter
+XP, daily totals, or fluency records; leaving or refreshing restarts the battle.
+Use the opponent selector to restart with another boss. Nothing is published
+by the local build command.
+
 - **Recall:** type the product without a countdown. This is the default.
 - **Sprint:** typed recall with a configurable 3, 5, or 8 second bonus window. Answers remain available after the window ends.
 - **Choose:** four plausible answers, with keyboard shortcuts 1–4.

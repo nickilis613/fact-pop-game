@@ -45,6 +45,30 @@ test('each operation honors chosen addends, keeps subtraction ordered, and compl
   }
 });
 
+test('friends of ten includes every pair in both orders and preserves settings and progress', () => {
+  const orders = new Set();
+  for (const mode of ['recall', 'sprint', 'choice']) for (const random of [0.1, 0.9]) {
+    const p = freshProgress();
+    p.additionSettings = {...freshAdditionSettings(), mode, tables: [1], operation: 'friends-ten'};
+    let calls = 0;
+    const m = new Mission(p, {subject: 'addition', rng: () => calls++ === 0 ? 0.7 : random});
+    assert.deepEqual(m.pool.map(f => f.key), ['1+9', '2+8', '3+7', '4+6', '5+5']);
+    while (!m.finished) {
+      const q = m.question;
+      assert.equal(q.operation, '+');
+      assert.equal(q.a + q.b, 10);
+      orders.add(`${q.a}+${q.b}`);
+      m.submit(10);
+      m.next();
+    }
+    assert.equal(m.history.length, 12);
+    assert.deepEqual(parseProgress(JSON.stringify(p)), p);
+    assert.deepEqual(importProgressCSV(exportProgressCSV(p)), p);
+  }
+  assert.ok(orders.has('4+6'));
+  assert.ok(orders.has('6+4'));
+});
+
 test('guided subtraction corrections preserve first attempt evidence and schedule review', () => {
   const p = freshProgress(); p.additionSettings = {...freshAdditionSettings(), operation: '−'};
   const m = new Mission(p, {subject:'addition', rng:()=>0.4});

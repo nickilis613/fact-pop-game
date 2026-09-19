@@ -25,6 +25,10 @@ Subtraction uses inverse facts such as `18 − 9 = 9`; it does not introduce zer
 or negative answers. Select addition only, subtraction only, or a mixed round,
 and choose which addends to practice.
 
+Choose **Friends of ten** in the Practice menu for addition pairs that total 10,
+from 1 + 9 through 5 + 5, in both orders. This uses all five pairs regardless of
+the selected addends and shares their existing addition progress.
+
 Profiles, XP, and daily goals carry across both pages. Fact evidence is separate
 for each operation, and each page remembers its own practice settings. Switching
 pages ends the current round while retaining recorded answers. Local saves,

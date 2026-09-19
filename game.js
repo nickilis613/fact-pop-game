@@ -218,6 +218,9 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   function setup() {
     bossUI.update();
     renderSubject();
+    const friendsTen = subject === "addition" && practiceSettings().operation === "friends-ten";
+    for (const id of ["table-heading", "all-tables", "table-picker"]) $(id).hidden = friendsTen;
+    if (friendsTen) $("table-note").textContent = "Friends of ten add up to 10: 1 + 9, 2 + 8, 3 + 7, 4 + 6, and 5 + 5. Practice both orders!";
     renderStudents();
     cloudControls();
     $("student-name").value = data.student;
@@ -238,7 +241,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("round-label").textContent =
       practiceSettings().mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
     $("fact-range").textContent = subject === "addition"
-      ? `${practiceSettings().tables.join(", ")} addends`
+      ? friendsTen ? "Friends of ten · sums of 10" : `${practiceSettings().tables.join(", ")} addends`
       : `Tables: ${practiceSettings().tables.join(", ")}`;
     $("sound").setAttribute("aria-pressed", String(practiceSettings().sound));
     $("sound").innerHTML = `♪ <span>Sound ${practiceSettings().sound ? "on" : "off"}</span>`;

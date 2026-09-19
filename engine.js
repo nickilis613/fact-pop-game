@@ -129,7 +129,7 @@ export function parseProgress(raw) {
     const a = p.additionSettings;
     if (!a || !["recall", "sprint", "choice"].includes(a.mode) ||
         !Array.isArray(a.tables) || !a.tables.length || !a.tables.every(t => ADDENDS.includes(t)) ||
-        ![3000, 5000, 8000].includes(a.goal) || !["mixed", "+", "−"].includes(a.operation))
+        ![3000, 5000, 8000].includes(a.goal) || !["mixed", "+", "−", "friends-ten"].includes(a.operation))
       throw Error("Invalid addition practice settings");
     result.additionSettings = { mode: a.mode, tables: [...new Set(a.tables)], goal: a.goal, sound: a.sound === true, operation: a.operation };
   }
@@ -167,6 +167,7 @@ export function makeOptions(a, b, rng = Math.random, operation = "×") {
 export function hint(a, b, operation = "×") {
   if (operation === "−") return `Think of the missing addend: ${b} + ${a - b} = ${a}, so ${a} − ${b} = ${a - b}.`;
   if (operation === "+") {
+    if (a + b === 10) return `Friends of ten: ${a} + ${b} = 10 and ${b} + ${a} = 10.`;
     if (a === 0 || b === 0) return `Adding zero keeps the number the same: ${a} + ${b} = ${a + b}.`;
     if (a === b) return `Double ${a}: ${a} + ${a} = ${a + b}.`;
     if (a + b >= 10) return `Make ten: ${a} + ${10 - a} = 10, then add ${b - (10 - a)} to make ${a + b}.`;
@@ -197,7 +198,9 @@ export class Mission {
     this.stage = "ready";
     this.finished = false;
     this.pool = (subject === "addition" ? SUM_FACTS : FACTS).filter(
-      (f) => (subject !== "addition" || this.settings.operation === "mixed" || f.operation === this.settings.operation) &&
+      (f) => subject === "addition" && this.settings.operation === "friends-ten"
+        ? f.operation === "+" && f.answer === 10
+        : (subject !== "addition" || this.settings.operation === "mixed" || f.operation === this.settings.operation) &&
         (this.settings.tables.includes(f.operation === "−" ? f.answer : f.a) || this.settings.tables.includes(f.b)),
     );
     this.next();
@@ -236,7 +239,9 @@ export class Mission {
       }
     }
     let { a, b } = f;
-    if (f.operation !== "−" && (!this.settings.tables.includes(a) || (this.settings.tables.includes(b) && this.rng() > 0.5)))
+    if (f.operation !== "−" && (this.settings.operation === "friends-ten"
+      ? this.rng() > 0.5
+      : (!this.settings.tables.includes(a) || (this.settings.tables.includes(b) && this.rng() > 0.5))))
       [a, b] = [b, a];
     this.question = { ...f, a, b, options: makeOptions(a, b, this.rng, operationSymbol(f)), review };
     this.stage = "answer";

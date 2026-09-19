@@ -228,7 +228,18 @@ test('subject switch preserves answers and settings, changes facts and restores 
     assert.equal(ui.get('secure-count').textContent,'0 / 126');
     assert.equal(ui.get('setup').hidden,false);
     assert.equal((ui.get('table-picker').innerHTML.match(/data-table=/g)||[]).length,9);
+    ui.get('operation-picker').value='friends-ten'; ui.get('operation-picker').fire('change');
+    assert.equal(ui.get('table-picker').hidden,true);
+    assert.match(ui.get('fact-range').textContent,/Friends of ten/);
+    await ui.get('start').fire('click');
+    [a,b]=ui.get('equation').innerHTML.match(/\d+/g).map(Number);
+    assert.equal(a+b,10);
+    assert.match(ui.get('equation').attributes['aria-label'],/plus/);
+    await ui.get('subject-switch').fire('click');
+    await ui.get('subject-switch').fire('click');
+    assert.equal(ui.get('operation-picker').value,'friends-ten');
     ui.get('operation-picker').value='−'; ui.get('operation-picker').fire('change');
+    assert.equal(ui.get('table-picker').hidden,false);
     await ui.get('start').fire('click');
     assert.match(ui.get('equation').attributes['aria-label'],/minus/);
     [a,b]=ui.get('equation').innerHTML.match(/\d+/g).map(Number);

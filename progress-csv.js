@@ -1,4 +1,4 @@
-import { FACTS, ALL_FACTS, parseProgress, freshProgress, status } from "./engine.js?v=arithmetic-1";
+import { FACTS, ALL_FACTS, parseProgress, freshProgress, status } from "./engine.js?v=timed-1";
 
 const columns = ["format", "student", "xp", "missions", "next_mission", "settings", "fact", "answer", "status", "attempts", "correct", "typed_attempts", "typed_correct", "last_seen", "last_correct", "recent"];
 const dailyColumns = [...columns, "daily"];

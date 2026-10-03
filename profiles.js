@@ -1,4 +1,4 @@
-import { freshProgress, parseProgress } from "./engine.js?v=arithmetic-1";
+import { freshProgress, parseProgress } from "./engine.js?v=timed-1";
 
 export const PROFILES_KEY = "fact-pop.profiles.v1";
 export function loadProfiles(raw, legacy) {

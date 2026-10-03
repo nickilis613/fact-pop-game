@@ -1,8 +1,8 @@
 import { mountBoss } from './boss.js';
-import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=arithmetic-1";
+import { CloudClient, CloudSaves, accountEmail, accountLabel } from "./cloud.js?v=timed-1";
 import { cloudConfig } from "./cloud-config.js";
-import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=arithmetic-1";
-import { exportProgressCSV, importProgressCSV } from "./progress-csv.js?v=arithmetic-1";
+import { PROFILES_KEY, loadProfiles, storeProfile, newStudent } from "./profiles.js?v=timed-1";
+import { exportProgressCSV, importProgressCSV } from "./progress-csv.js?v=timed-1";
 import {
   FACTS as MULTIPLICATION_FACTS,
   SUM_FACTS,
@@ -11,6 +11,8 @@ import {
   operationSymbol,
   TABLES as MULTIPLICATION_TABLES,
   ROUND_LENGTH,
+  CHALLENGE_MS,
+  challengeOperations,
   DAILY_ROUND_GOAL,
   dailyProgress,
   localDateKey,
@@ -19,7 +21,7 @@ import {
   status,
   hint,
   Mission,
-} from "./engine.js?v=arithmetic-1";
+} from "./engine.js?v=timed-1";
 
 export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } = {}) {
   let subject = new URLSearchParams(window.location?.search || "").get("practice") === "addition" ? "addition" : "multiplication";
@@ -99,6 +101,15 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   }
   function tick() {
     stopClock();
+    if (mission?.timed && !mission.finished && mission.stage !== "paused" && page === "play") {
+      const left = mission.remainingMs();
+      $("pace").max = CHALLENGE_MS;
+      $("pace").value = left;
+      $("pace-label").textContent = `${Math.ceil(left / 1000)}s`;
+      if (!left) { finish(); return; }
+      frame = requestAnimationFrame(tick);
+      return;
+    }
     if (
       !mission ||
       mission.stage !== "answer" ||
@@ -230,6 +241,13 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       b.classList.toggle("selected", selected);
       b.setAttribute("aria-pressed", String(selected));
     });
+    const timed = practiceSettings().mode === "timed";
+    $("table-note").hidden = timed;
+    $("timed-settings").hidden = !timed;
+    root.querySelectorAll("[data-operation]").forEach(b => b.setAttribute("aria-pressed", String(challengeOperations(practiceSettings()).includes(b.dataset.operation))));
+    for (const id of ["table-heading", "all-tables", "table-picker", "table-note", "operation-settings"]) {
+      if (timed) $(id).hidden = true;
+    }
     $("sprint-settings").hidden = practiceSettings().mode !== "sprint";
     $("speed-goal").value = String(practiceSettings().goal);
     $("table-picker").innerHTML = TABLES.map(
@@ -239,10 +257,11 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("all-tables").textContent =
       practiceSettings().tables.length === TABLES.length ? "Use starter set" : "Select all";
     $("round-label").textContent =
-      practiceSettings().mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
+      timed ? "60 seconds · as many facts as you can" : practiceSettings().mode === "sprint" ? "12 facts · speed bonuses" : "12 facts";
     $("fact-range").textContent = subject === "addition"
       ? friendsTen ? "Friends of ten · sums of 10" : `${practiceSettings().tables.join(", ")} addends`
       : `Tables: ${practiceSettings().tables.join(", ")}`;
+    if (timed) $("fact-range").textContent = challengeOperations(practiceSettings()).join(" / ");
     $("sound").setAttribute("aria-pressed", String(practiceSettings().sound));
     $("sound").innerHTML = `♪ <span>Sound ${practiceSettings().sound ? "on" : "off"}</span>`;
   }
@@ -274,7 +293,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     save();
     $("setup").hidden = true;
     $("mission-label").textContent =
-      `${practiceSettings().mode === "sprint" ? "SPRINT" : practiceSettings().mode === "choice" ? "CHOOSE" : "RECALL"} ROUND`;
+      `${practiceSettings().mode === "timed" ? "60-SECOND" : practiceSettings().mode === "sprint" ? "SPRINT" : practiceSettings().mode === "choice" ? "CHOOSE" : "RECALL"} ROUND`;
     $("arena-status").textContent = "Practicing";
     showScreen("question");
     renderQuestion();
@@ -283,7 +302,8 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
   }
   function renderQuestion() {
     const q = mission.question;
-    $("round-label").textContent = `Fact ${mission.history.length + 1} of ${ROUND_LENGTH}`;
+    $("round-label").textContent = mission.timed ? `${mission.history.filter(r => r.correct).length} correct · ${mission.history.length} answered` : `Fact ${mission.history.length + 1} of ${ROUND_LENGTH}`;
+    $("mission-progress").hidden = mission.timed;
     $("mission-progress").innerHTML = Array.from(
       { length: ROUND_LENGTH },
       (_, i) =>
@@ -304,6 +324,8 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("answer").disabled = false;
     $("check").disabled = true;
     $("answer-form").hidden = mission.settings.mode === "choice";
+    $("keypad").hidden = mission.settings.mode === "choice";
+    $("answer").setAttribute("inputmode", "none");
     $("choices").hidden = mission.settings.mode !== "choice";
     $("choices").innerHTML = q.options
       .map(
@@ -317,20 +339,29 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("keyboard-tip").textContent =
       mission.settings.mode === "choice"
         ? "Choose an answer or press 1–4"
-        : "Type your answer and press Enter";
-    $("pace-row").hidden = mission.settings.mode !== "sprint";
+        : "Tap the digits, then Check · You can also type and press Enter";
+    $("pace-row").hidden = !mission.timed && mission.settings.mode !== "sprint";
+    $("pace-title").textContent = mission.timed ? "Time left" : "Bonus window";
     focusAnswer();
     tick();
   }
   function submit(value) {
     if (page !== "play" || cloudBusy) return;
     const result = mission?.submit(value);
-    if (!result) return;
+    if (!result) { if (mission?.timed && mission.finished) finish(); return; }
     stopClock();
     sound(result.correct);
     save();
     updateStats();
     const q = mission.question;
+    if (mission.timed) {
+      mission.next();
+      if (mission.finished) { finish(); return; }
+      renderQuestion();
+      $("feedback").className = `feedback ${result.correct ? "correct" : "wrong"}`;
+      $("feedback").textContent = result.correct ? "Correct!" : `${q.a} ${operationSymbol(q)} ${q.b} = ${q.answer}. Keep going!`;
+      return;
+    }
     if (result.guided) {
       if (result.correct) {
         $("feedback").className = "feedback correct";
@@ -368,6 +399,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
         `<strong>${q.a} ${operationSymbol(q)} ${q.b} = ${q.answer}. Let’s try that together.</strong><span class="hint">${hint(q.a, q.b, operationSymbol(q))} Type ${q.answer} below the question. +20 XP for trying.</span>`;
       $("answer-form").hidden = false;
       $("choices").hidden = true;
+      $("keypad").hidden = false;
       $("answer").value = "";
       $("check").disabled = true;
       $("keyboard-tip").textContent = "Guided retry · This won’t count as an unassisted answer";
@@ -404,7 +436,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     const median = times.length
       ? (times[Math.floor((times.length - 1) / 2)] + times[Math.floor(times.length / 2)]) / 2
       : null;
-    const completed = h.length === ROUND_LENGTH && mission.dailyRoundCounted;
+    const completed = mission.timed ? mission.dailyRoundCounted : h.length === ROUND_LENGTH && mission.dailyRoundCounted;
     $("result-eyebrow").textContent = completed ? "ROUND COMPLETE" : "ROUND ENDED";
     $("result-title").textContent = !completed
       ? "Round ended"
@@ -416,6 +448,12 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       : "No answers recorded.";
     $("result-stats").innerHTML =
       `<div><strong>+${mission.xp}</strong><span>XP collected</span></div><div><strong>${h.length ? Math.round((correct.length / h.length) * 100) + "%" : "—"}</strong><span>first-try accuracy</span></div><div><strong>${median !== null ? (median / 1000).toFixed(1) + "s" : "—"}</strong><span>${mission.settings.mode === "choice" ? "median choice time" : "median correct recall"}</span></div>`;
+    if (mission.timed) {
+      $("result-eyebrow").textContent = completed ? "TIME’S UP!" : "CHALLENGE ENDED";
+      $("result-title").textContent = `${correct.length} facts correct!`;
+      $("result-message").textContent = `${correct.length} correct out of ${h.length} answered${completed ? " in 60 seconds" : " before finishing early"}.`;
+      $("result-stats").innerHTML = `<div><strong>${correct.length}</strong><span>correct facts</span></div><div><strong>${h.length ? Math.round(correct.length / h.length * 100) : 0}%</strong><span>accuracy</span></div><div><strong>+${mission.xp}</strong><span>XP collected</span></div>`;
+    }
     const missed = [...new Map(h.filter((r) => !r.correct).map((r) => [r.key, r])).values()];
     $("review-facts").innerHTML = missed.length
       ? "<strong>Facts to review:</strong>" +
@@ -426,6 +464,7 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
     $("replay").focus({ preventScroll: true });
   }
   function pause() {
+    if (mission?.timed && !mission.remainingMs() && !mission.finished) { finish(); return; }
     if (mission?.pause()) {
       stopClock();
       showScreen("pause");
@@ -499,6 +538,18 @@ export function mountGame(root, { cloudClient = new CloudClient(cloudConfig) } =
       setup();
       save();
       $("table-picker").querySelector(`[data-table="${t}"]`).focus();
+    }
+    if (button.dataset.operation && (!mission || mission.finished)) {
+      const operations = challengeOperations(practiceSettings());
+      const op = button.dataset.operation;
+      if (operations.includes(op) && operations.length === 1) return;
+      practiceSettings().operations = operations.includes(op) ? operations.filter(item => item !== op) : [...operations, op];
+      setup(); save();
+    }
+    if (button.dataset.key !== undefined && mission && ["answer", "retry"].includes(mission.stage)) {
+      const input = $("answer"), key = button.dataset.key;
+      input.value = key === "clear" ? "" : key === "delete" ? input.value.slice(0, -1) : (input.value + key).slice(0, 3);
+      $("check").disabled = !input.value;
     }
     if (button.dataset.answer) submit(Number(button.dataset.answer));
     if (button.dataset.fact) {

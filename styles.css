@@ -2032,3 +2032,16 @@ footer {
     margin: 0;
   }
 }
+
+/* Large touch targets for students using the on-screen number pad. */
+.number-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: min(100%, 340px); margin: 16px auto; }
+.number-keypad button { min-height: 58px; border: 2px solid #d6dce8; border-radius: 14px; background: #fff; color: #253153; font: inherit; font-size: 26px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.number-keypad button[data-key="clear"] { font-size: 17px; }
+.number-keypad button:hover { background: #eef0ff; }
+.number-keypad button:active { transform: scale(.96); }
+.number-keypad button:focus-visible, .operation-toggles button:focus-visible { outline: 3px solid #6757d9; outline-offset: 3px; }
+.operation-toggles { display: flex; flex-wrap: wrap; gap: 10px; }
+.operation-toggles button { min-height: 48px; padding: 10px 16px; border: 2px solid #d6dce8; border-radius: 12px; background: white; font: inherit; cursor: pointer; touch-action: manipulation; }
+.operation-toggles button[aria-pressed="true"] { background: #eef0ff; border-color: #6757d9; color: #4434ad; }
+.mode-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.number-keypad[hidden], #timed-settings[hidden] { display: none; }

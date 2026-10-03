@@ -1,4 +1,9 @@
 export const ROUND_LENGTH = 12;
+export const CHALLENGE_MS = 60000;
+export const challengeOperations = settings => {
+  const selected = settings.operations?.filter(op => ["×", "+", "−"].includes(op));
+  return selected?.length ? [...new Set(selected)] : ["×", "+", "−"];
+};
 export const DAILY_ROUND_GOAL = 3;
 export const STORAGE_KEY = "fact-pop.progress.v2";
 export const TABLES = Array.from({ length: 11 }, (_, i) => i + 2);
@@ -113,7 +118,7 @@ export function parseProgress(raw) {
   const s = p.settings;
   if (
     s &&
-    ["recall", "sprint", "choice"].includes(s.mode) &&
+    ["recall", "sprint", "choice", "timed"].includes(s.mode) &&
     Array.isArray(s.tables) &&
     s.tables.length &&
     s.tables.every((t) => TABLES.includes(t)) &&
@@ -124,14 +129,16 @@ export function parseProgress(raw) {
       tables: [...new Set(s.tables)],
       goal: s.goal,
       sound: s.sound === true,
+      ...(s.operations ? { operations: challengeOperations(s) } : {}),
     };
   if (p.additionSettings !== undefined) {
     const a = p.additionSettings;
-    if (!a || !["recall", "sprint", "choice"].includes(a.mode) ||
+    if (!a || !["recall", "sprint", "choice", "timed"].includes(a.mode) ||
         !Array.isArray(a.tables) || !a.tables.length || !a.tables.every(t => ADDENDS.includes(t)) ||
         ![3000, 5000, 8000].includes(a.goal) || !["mixed", "+", "−", "friends-ten"].includes(a.operation))
       throw Error("Invalid addition practice settings");
     result.additionSettings = { mode: a.mode, tables: [...new Set(a.tables)], goal: a.goal, sound: a.sound === true, operation: a.operation };
+    if (a.operations) result.additionSettings.operations = challengeOperations(a);
   }
   return result;
 }
@@ -189,6 +196,9 @@ export class Mission {
     this.subject = subject;
     const settings = subject === "addition" ? (progress.additionSettings ||= freshAdditionSettings()) : progress.settings;
     this.settings = { ...settings, tables: [...settings.tables] };
+    this.timed = settings.mode === "timed";
+    this.roundStarted = this.clock();
+    this.roundPausedMs = 0;
     this.id = ++progress.nextMission;
     this.history = [];
     this.queue = [];
@@ -203,11 +213,15 @@ export class Mission {
         : (subject !== "addition" || this.settings.operation === "mixed" || f.operation === this.settings.operation) &&
         (this.settings.tables.includes(f.operation === "−" ? f.answer : f.a) || this.settings.tables.includes(f.b)),
     );
+    if (this.timed) this.pool = ALL_FACTS.filter(f => challengeOperations(settings).includes(operationSymbol(f)));
     this.next();
+  }
+  remainingMs() {
+    return Math.max(0, CHALLENGE_MS - ((this.stage === "paused" ? this.pausedAt : this.clock()) - this.roundStarted - this.roundPausedMs));
   }
   next() {
     if (this.finished || !["ready", "feedback"].includes(this.stage)) return false;
-    if (this.history.length >= ROUND_LENGTH) {
+    if (this.timed ? !this.remainingMs() : this.history.length >= ROUND_LENGTH) {
       this.finish();
       return true;
     }
@@ -254,6 +268,7 @@ export class Mission {
     return this.elapsed + (this.stage === "answer" ? Math.max(0, this.clock() - this.started) : 0);
   }
   submit(value) {
+    if (this.timed && !this.finished && !this.remainingMs()) { this.finish(); return null; }
     if (
       !Number.isInteger(value) ||
       value < 0 ||
@@ -323,11 +338,12 @@ export class Mission {
       this.queue = this.queue.filter((i) => i.key !== q.key);
       this.queue.push({ key: q.key, due: this.history.length + 2 });
     }
-    this.stage = correct ? "feedback" : "retry";
+    this.stage = correct || this.timed ? "feedback" : "retry";
     if (correct) this.countDailyRound();
     return { correct, earned, guided: false, speed, streakBonus };
   }
   countDailyRound() {
+    if (this.timed) return;
     if (this.history.length !== ROUND_LENGTH || this.dailyRoundCounted) return;
     const daily = (this.progress.daily = dailyProgress(this.progress, this.date()));
     daily.rounds++;
@@ -335,6 +351,8 @@ export class Mission {
   }
   pause() {
     if (this.finished || this.stage === "paused") return false;
+    if (this.timed && !this.remainingMs()) { this.finish(); return false; }
+    this.pausedAt = this.clock();
     if (this.stage === "answer") {
       this.elapsed = this.elapsedMs();
       this.wasPaused = true;
@@ -345,12 +363,18 @@ export class Mission {
   }
   resume() {
     if (this.stage !== "paused") return false;
+    this.roundPausedMs += this.clock() - this.pausedAt;
     this.stage = this.previousStage;
     this.started = this.clock();
     return true;
   }
   finish() {
     if (this.finished) return false;
+    if (this.timed && !this.remainingMs() && this.history.length && !this.dailyRoundCounted) {
+      const daily = (this.progress.daily = dailyProgress(this.progress, this.date()));
+      daily.rounds++;
+      this.dailyRoundCounted = true;
+    }
     this.finished = true;
     this.stage = "complete";
     if (this.history.length) this.progress.missions++;
